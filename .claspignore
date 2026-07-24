@@ -1,0 +1,6 @@
+wrapper/**
+node_modules/**
+outils/**
+.git/**
+*.md
+.gitignore

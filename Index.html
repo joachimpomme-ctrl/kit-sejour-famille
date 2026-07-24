@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Séjour</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Public+Sans:wght@400;500;600;700&display=swap');
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; }
+body { background:#F6F4EE; color:#1E3350; font-family:'Public Sans',system-ui,sans-serif; display:flex; justify-content:center; }
+#app { width:100%; max-width:480px; padding-bottom:88px; min-height:100vh; }
+.mariniere { height:18px; background:repeating-linear-gradient(0deg,#1E3350 0 4px,#F6F4EE 4px 8px); }
+.entete { display:flex; justify-content:space-between; align-items:flex-end; padding:14px 16px 4px; }
+.surtitre { font-size:11px; letter-spacing:.08em; text-transform:uppercase; font-weight:600; color:#B0752C; }
+h1 { font-family:'Bricolage Grotesque',sans-serif; font-weight:800; font-size:30px; line-height:1.05; margin-top:2px; overflow-wrap:anywhere; }
+.btn-refresh { border:1.5px solid #1E3350; background:#fff; color:#1E3350; border-radius:10px; width:44px; height:44px; font-size:18px; cursor:pointer; flex-shrink:0; }
+.btn-discret { border:none; background:transparent; color:#8A8F98; width:34px; height:44px; font-size:22px; cursor:pointer; border-radius:10px; padding:0; }
+.btn-discret.actif { background:#1E3350; color:#fff; }
+.note-partage { font-size:12px; color:#5B6472; padding:6px 16px 0; }
+.contenu { padding:12px 16px 0; display:flex; flex-direction:column; gap:12px; }
+.aide { font-size:13px; color:#5B6472; line-height:1.45; margin:2px 2px 0; }
+.carte { background:#fff; border:1px solid #E4E0D5; border-radius:14px; padding:14px; display:flex; flex-direction:column; gap:10px; }
+.carte.alerte { border-color:#EBDFC6; background:#FBF7EE; }
+.carte-titre { font-family:'Bricolage Grotesque',sans-serif; font-size:16px; font-weight:700; }
+.jour-titre { font-family:'Bricolage Grotesque',sans-serif; font-size:17px; font-weight:700; margin-bottom:4px; }
+.slot { padding:8px 0; border-top:1px solid #F0EDE4; }
+.slot-ligne { display:flex; align-items:center; gap:10px; }
+.slot-label { font-size:13px; font-weight:600; width:74px; flex-shrink:0; }
+input, select { font-family:'Public Sans',system-ui,sans-serif; font-size:16px; color:#1E3350; border:1px solid #D8D3C6; border-radius:10px; background:#FBFAF6; padding:10px 12px; width:100%; }
+select { appearance:none; -webkit-appearance:none; padding-right:30px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%231E3350' stroke-width='2' fill='none'/%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-position:right 10px center; }
+input:focus, select:focus, button:focus-visible { outline:2px solid #1E3350; outline-offset:1px; }
+.select-vide { color:#8A8F98; }
+.input-menu { margin-top:6px; border-style:dashed; background:transparent; padding:8px 12px; }
+.duo-ligne { display:flex; gap:8px; margin-top:6px; }
+.ligne-h { display:flex; gap:8px; }
+.ligne-h > * { min-width:0; }
+.flex1 { flex:1; } .flex14 { flex:1.4; }
+.btn { background:#1E3350; color:#fff; border:none; border-radius:10px; padding:13px; font-size:16px; font-weight:700; cursor:pointer; width:100%; }
+.erreur { color:#B3402E; font-size:13px; font-weight:600; }
+.total-ligne { display:flex; justify-content:space-between; align-items:baseline; padding:2px 4px; font-size:14px; font-weight:600; }
+.chiffre { font-variant-numeric:tabular-nums; font-weight:700; white-space:nowrap; }
+.depense { display:flex; align-items:center; background:#fff; border:1px solid #E4E0D5; border-radius:12px; padding:10px 12px; gap:6px; }
+.dep-label { font-size:15px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dep-meta { font-size:12.5px; color:#5B6472; margin-top:2px; }
+.btn-x { border:none; background:transparent; color:#8A8F98; font-size:22px; line-height:1; cursor:pointer; padding:4px 2px 4px 8px; min-width:34px; }
+.btn-x.arme { background:#B3402E; color:#fff; font-size:12px; font-weight:700; border-radius:8px; padding:6px 8px; min-width:44px; }
+.btn-pj { border:1px dashed #B0752C; background:transparent; color:#B0752C; border-radius:10px; padding:11px; font-size:14.5px; font-weight:600; cursor:pointer; width:100%; }
+.pj-ligne { display:flex; align-items:center; gap:6px; background:#FBF7EE; border:1px solid #EBDFC6; border-radius:10px; padding:5px 5px 5px 12px; }
+.pj-nom { flex:1; font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.note-pj { font-size:13px; color:#B0752C; font-weight:600; }
+.dep-pj { color:#B0752C; font-weight:700; text-decoration:none; display:inline-block; padding:2px 0; }
+.ligne-foyer { display:flex; align-items:center; gap:8px; border-top:1px solid #F0EDE4; padding-top:8px; }
+.select-compact { font-size:14px; padding:8px 24px 8px 8px; border-radius:8px; width:auto; }
+.presence { display:flex; align-items:center; gap:6px; padding:0 0 8px 0; }
+.presence .dep-meta { margin-top:0; flex-shrink:0; }
+.resume { display:flex; justify-content:space-between; align-items:flex-end; }
+.resume-label { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:#5B6472; font-weight:600; }
+.virement { display:flex; justify-content:space-between; align-items:center; background:#FBF7EE; border:1px solid #EBDFC6; border-radius:10px; padding:10px 12px; font-size:14.5px; }
+.chambre-bloc { border-top:1px solid #F0EDE4; padding-top:8px; display:flex; flex-direction:column; gap:8px; }
+.chambre-tete { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+.badge-cap { font-variant-numeric:tabular-nums; font-size:12.5px; font-weight:700; color:#2E7D5B; background:#EDF5F0; border-radius:999px; padding:3px 9px; white-space:nowrap; }
+.badge-cap.rouge { color:#B3402E; background:#F9ECE9; }
+.chips { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.chip { display:inline-flex; align-items:center; gap:2px; background:#EEF1F6; border:1px solid #D9DFE9; border-radius:999px; padding:5px 6px 5px 11px; font-size:14px; font-weight:600; }
+.chip button { border:none; background:transparent; color:#5B6472; font-size:16px; line-height:1; cursor:pointer; padding:0 5px; }
+.select-ajout { width:auto; font-size:14px; padding:7px 26px 7px 10px; border-radius:999px; border:1px dashed #B0752C; background:transparent; color:#B0752C; font-weight:600; }
+input[type=checkbox] { width:22px; height:22px; padding:0; accent-color:#1E3350; flex-shrink:0; }
+input[type=date] { min-height:44px; }
+.alerte-cat { display:flex; align-items:center; gap:10px; padding:7px 0; font-size:15px; font-weight:600; border-top:1px solid #F0EDE4; cursor:pointer; }
+.pb-item { display:flex; align-items:center; gap:10px; border-top:1px solid #F0EDE4; padding:8px 0 8px 2px; cursor:pointer; }
+.pb-coche { width:26px; height:26px; flex-shrink:0; border-radius:999px; border:2px solid #1E3350; background:#fff; color:#fff; font-size:15px; line-height:1; cursor:pointer; padding:0; }
+.pb-item.fait .pb-coche { background:#2E7D5B; border-color:#2E7D5B; }
+.pb-item.fait .pb-txt { color:#8A8F98; text-decoration:line-through; }
+.pb-txt { flex:1; min-width:0; font-size:15px; font-weight:600; overflow-wrap:anywhere; }
+.btn-wifi { flex:1; border:1.5px solid #1E3350; background:#fff; color:#1E3350; border-radius:10px; padding:10px 6px; font-size:14px; font-weight:700; cursor:pointer; }
+.btn-wifi.actif { background:#1E3350; color:#fff; }
+.qr-zone { display:flex; flex-direction:column; align-items:center; gap:6px; padding:8px 0 2px; }
+#qr-code { background:#fff; padding:12px; border:1px solid #E4E0D5; border-radius:12px; line-height:0; }
+.tabs { position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:480px; display:flex; background:#1E3350; padding:8px 6px calc(8px + env(safe-area-inset-bottom)); gap:3px; }
+.tab { flex:1; background:transparent; color:#B8C4D6; border:none; border-radius:10px; padding:11px 0; font-size:11.5px; font-weight:600; cursor:pointer; white-space:nowrap; }
+.tab.actif { background:#fff; color:#1E3350; font-weight:800; }
+.info { padding:24px; font-size:15px; }
+</style>
+</head>
+<body>
+<div id="app"><p class="info">Chargement des données partagées…</p></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+/* ------------------------- Constantes locales ------------------------- */
+
+var SLOT_LABEL = { dej:'Déjeuner', din:'Dîner' };
+var CATS = [ {id:'courses',label:'Courses communes'}, {id:'apero',label:'Apéro'}, {id:'autre',label:'Autre'} ];
+var JOURS_FR = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+var JOURS_FR_COURT = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+var MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+
+/* ------------------------- État ---------------------------------------- */
+
+var DATA = null;
+var JOURS = [];       // jours du séjour, recalculés à chaque rendu depuis la config
+var TAB = 'repas';
+var PREMIER = true;   // premier chargement (pour ouvrir Réglages si séjour vierge)
+var ARME = null;      // id du bouton de suppression armé
+var ARME_TIMER = null;
+var ADMIN_CRED = null; // {email, pass} si connecté (mémorisé sur l'appareil)
+var ADMIN_CFG = null;  // config alertes {on, cats} chargée après connexion
+var PANNEAU = false;   // panneau admin déplié
+var LOGIN_UI = false;  // formulaire de connexion admin affiché (?admin=1)
+var CATS_ALERTES = [['repas','Repas'],['depenses','Dépenses'],['famille','Famille'],['chambres','Chambres'],['wifi','Wifi'],['courses','Pense-bête de courses'],['reglages','Réglages']];
+var FICHIER_DEP = null; // File choisi pour la facture (photo/PDF), avant envoi
+var NOTE_DEP = '';    // message informatif sous le formulaire de dépense
+var MAX_PJ = 5 * 1024 * 1024; // 5 Mo pour un fichier envoyé tel quel (PDF…)
+var QR_OUVERT = null; // id du bâtiment dont le QR wifi est affiché
+
+/* ------------------------- Utilitaires --------------------------------- */
+
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function eur(n) {
+  return new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n||0);
+}
+function parseMontant(s) {
+  var v = parseFloat(String(s).replace(',','.').replace(/[^0-9.\-]/g,''));
+  return isNaN(v) ? null : Math.round(v*100)/100;
+}
+function frNum(n){ return (n||0).toLocaleString('fr-FR',{maximumFractionDigits:2}); }
+
+/* --- Dates du séjour --- */
+
+function dateValide(s){ return /^\d{4}-\d{2}-\d{2}$/.test(String(s||'')); }
+function enDate(iso){ return new Date(iso + 'T12:00:00'); }
+function numFr(n){ return n===1 ? '1er' : String(n); }
+function jourLabel(dt){ return JOURS_FR[dt.getDay()]+' '+numFr(dt.getDate())+' '+MOIS_FR[dt.getMonth()]; }
+function jourCourt(dt){
+  var m = dt.getMonth()+1;
+  return JOURS_FR_COURT[dt.getDay()]+' '+String(dt.getDate()).padStart(2,'0')+'/'+String(m).padStart(2,'0');
+}
+/** Jours du séjour d'après la config : dîner seul le jour d'arrivée,
+ *  déjeuner seul le jour du départ. Vide si les dates sont absentes ou incohérentes. */
+function joursSejour() {
+  var c = DATA.config||{};
+  if (!dateValide(c.debut) || !dateValide(c.fin)) return [];
+  var deb = enDate(c.debut), fin = enDate(c.fin);
+  if (fin < deb) return [];
+  var out = [], d = new Date(deb), n = 0;
+  while (d <= fin && n < 62) {
+    var iso = d.toISOString().slice(0,10);
+    var slots = (+d===+deb && +d===+fin) ? ['dej','din'] : (+d===+deb) ? ['din'] : (+d===+fin) ? ['dej'] : ['dej','din'];
+    out.push({ id: iso, label: jourLabel(d), court: jourCourt(d), slots: slots });
+    d.setDate(d.getDate()+1); n++;
+  }
+  return out;
+}
+function periodeCourte() {
+  var c = DATA.config||{};
+  if (!dateValide(c.debut) || !dateValide(c.fin)) return 'Dates à régler';
+  var a = enDate(c.debut), b = enDate(c.fin);
+  return numFr(a.getDate())+' '+MOIS_FR[a.getMonth()]+' → '+numFr(b.getDate())+' '+MOIS_FR[b.getMonth()];
+}
+function slotNom(id) {
+  var i = String(id).lastIndexOf('-');
+  if (i === -1) return id;
+  var day = id.slice(0,i), s = id.slice(i+1);
+  var j = JOURS.find(function(x){return x.id===day;});
+  return j ? (SLOT_LABEL[s]||s)+' · '+j.court : (dateValide(day) ? (SLOT_LABEL[s]||s)+' · '+jourCourt(enDate(day)) : id);
+}
+
+/* --- Présence (arrivée/départ de chacun) --- */
+
+function nuitsEntre(a, b) {
+  if (!dateValide(a) || !dateValide(b)) return 0;
+  return Math.max(0, Math.round((enDate(b) - enDate(a)) / 86400000));
+}
+/** Bornes de présence d'un participant, ramenées dans les dates du séjour.
+ *  Champ vide = présent tout le séjour. */
+function bornesPresence(p) {
+  var c = DATA.config||{};
+  var a = dateValide(p.arrivee) ? p.arrivee : c.debut;
+  var d = dateValide(p.depart) ? p.depart : c.fin;
+  if (dateValide(c.debut) && a < c.debut) a = c.debut;
+  if (dateValide(c.fin) && d > c.fin) d = c.fin;
+  if (d < a) d = a;
+  return { a:a, d:d };
+}
+
+function listeFoyers() {
+  var set = (DATA.foyers||[]).slice();
+  DATA.participants.forEach(function(p){ if(p.foyer && set.indexOf(p.foyer)===-1) set.push(p.foyer); });
+  return set;
+}
+function equipes() {
+  return listeFoyers().filter(function(f){
+    return DATA.participants.some(function(p){ return p.foyer===f && (parseFloat(p.poids)||0)>=1; });
+  });
+}
+function parId(id) { return DATA.participants.find(function(p){return p.id===id;}); }
+
+function comptes() {
+  var c = DATA.config||{};
+  var nuitsTotal = nuitsEntre(c.debut, c.fin);
+  var prorata = !!c.prorata && nuitsTotal > 0;
+  function poidsEff(p) {
+    var w = parseFloat(p.poids)||0;
+    if (!prorata || !w) return w;
+    var b = bornesPresence(p);
+    return w * nuitsEntre(b.a, b.d) / nuitsTotal;
+  }
+  var foyers = listeFoyers(), parts = {}, paye = {};
+  foyers.forEach(function(f){ parts[f]=0; paye[f]=0; });
+  DATA.participants.forEach(function(p){ parts[p.foyer]=(parts[p.foyer]||0)+poidsEff(p); });
+  var total = 0;
+  DATA.expenses.forEach(function(e){ total+=e.amount||0; if(paye[e.payer]===undefined)paye[e.payer]=0; paye[e.payer]+=e.amount||0; });
+  var totalParts = 0; Object.keys(parts).forEach(function(f){ totalParts+=parts[f]; });
+  var coutPart = totalParts>0 ? total/totalParts : 0;
+  var lignes = Object.keys(paye).map(function(f){
+    var du=(parts[f]||0)*coutPart;
+    return { foyer:f, parts:parts[f]||0, paye:paye[f]||0, du:du, solde:(paye[f]||0)-du };
+  });
+  var deb=lignes.filter(function(l){return l.solde<-0.01;}).map(function(l){return{f:l.foyer,m:-l.solde};}).sort(function(a,b){return b.m-a.m;});
+  var cre=lignes.filter(function(l){return l.solde>0.01;}).map(function(l){return{f:l.foyer,m:l.solde};}).sort(function(a,b){return b.m-a.m;});
+  var vir=[], i=0, j=0;
+  while(i<deb.length && j<cre.length){
+    var m=Math.min(deb[i].m,cre[j].m);
+    vir.push({de:deb[i].f,vers:cre[j].f,montant:m});
+    deb[i].m-=m; cre[j].m-=m;
+    if(deb[i].m<0.01)i++; if(cre[j].m<0.01)j++;
+  }
+  return { total:total, totalParts:totalParts, coutPart:coutPart, lignes:lignes, virements:vir, partsParFoyer:parts, prorata:prorata };
+}
+
+/* ------------------------- Serveur ------------------------------------- */
+
+function setSync(s) {
+  var b = document.getElementById('btn-sync');
+  if (b) b.textContent = s==='…' ? '…' : s==='ok' ? '✓' : s==='échec' ? '!' : '⟳';
+}
+function charger() {
+  google.script.run.withSuccessHandler(function(j){
+    DATA = JSON.parse(j);
+    if (PREMIER) {
+      PREMIER = false;
+      if (!DATA.participants.length) TAB = 'reglages';
+    }
+    render();
+  }).withFailureHandler(function(){
+    document.getElementById('app').innerHTML = '<p class="info">Impossible de charger. Vérifie ta connexion et recharge la page.</p>';
+  }).getData();
+}
+function op(o) {
+  setSync('…');
+  google.script.run.withSuccessHandler(function(j){
+    DATA = JSON.parse(j); render(); setSync('ok');
+    setTimeout(function(){ setSync(''); }, 1200);
+  }).withFailureHandler(function(){ setSync('échec'); })
+  .applyOp(JSON.stringify(o));
+}
+
+/* ------------------------- Actions ------------------------------------- */
+
+function choisirEquipe(slot, v) {
+  if (v==='__duo') op({t:'setMeal',slot:slot,patch:{team:'',duo:['','']}});
+  else op({t:'setMeal',slot:slot,patch:{team:v,duo:null}});
+}
+function choisirDuo(slot, n, v) {
+  var m = DATA.meals[slot]||{duo:['','']};
+  var duo = (m.duo||['','']).slice(); duo[n]=v;
+  op({t:'setMeal',slot:slot,patch:{duo:duo}});
+}
+function commitMenu(slot, el) {
+  var actuel = (DATA.meals[slot]||{}).menu||'';
+  if (el.value!==actuel) op({t:'setMeal',slot:slot,patch:{menu:el.value}});
+}
+function ajouterDepense() {
+  var label=document.getElementById('dep-label').value.trim();
+  var m=parseMontant(document.getElementById('dep-montant').value);
+  var payeur=document.getElementById('dep-payeur').value;
+  var lien=document.getElementById('dep-lien').value;
+  var err=document.getElementById('dep-erreur');
+  if(!label){err.textContent='Il manque un libellé.';return;}
+  if(m===null||m<=0){err.textContent='Montant invalide.';return;}
+  if(!payeur){err.textContent='Qui a payé ?';return;}
+  err.textContent='';
+  NOTE_DEP='';
+  var exp={label:label,amount:m,payer:payeur,link:lien};
+  if(!FICHIER_DEP){ op({t:'addExpense',exp:exp}); return; }
+  var b=document.getElementById('btn-dep');
+  if(b){ b.disabled=true; b.textContent='Envoi de la facture…'; }
+  preparerFacture(FICHIER_DEP, label.slice(0,60)+' ('+payeur+')', function(nom,type,b64){
+    google.script.run.withSuccessHandler(function(id){
+      exp.pj=id; finaliserDepense(exp,'');
+    }).withFailureHandler(function(){
+      finaliserDepense(exp,'Dépense enregistrée, mais l\'envoi de la facture a échoué.');
+    }).uploadFacture(nom,type,b64);
+  }, function(note){ finaliserDepense(exp,note); });
+}
+function finaliserDepense(exp,note){
+  FICHIER_DEP=null; NOTE_DEP=note||'';
+  var b=document.getElementById('btn-dep');
+  if(b){ b.disabled=false; b.textContent='Enregistrer la dépense'; }
+  op({t:'addExpense',exp:exp});
+}
+/* Photo : recompression canvas (max 1600 px, JPEG). PDF ou image illisible :
+   envoi tel quel si moins de 5 Mo. L'échec n'empêche jamais d'enregistrer. */
+function preparerFacture(file, base, ok, ko) {
+  var type = file.type || '';
+  function brut() {
+    if (file.size > MAX_PJ) { ko('Dépense enregistrée sans la facture : fichier trop lourd (5 Mo max).'); return; }
+    var ext = (file.name && file.name.indexOf('.') !== -1) ? '.' + file.name.split('.').pop() : '';
+    var r = new FileReader();
+    r.onload = function(){ ok(base + ext, type || 'application/octet-stream', String(r.result).split(',')[1]); };
+    r.onerror = function(){ ko('Dépense enregistrée sans la facture : fichier illisible.'); };
+    r.readAsDataURL(file);
+  }
+  if (type.indexOf('image/') !== 0) { brut(); return; }
+  var url = URL.createObjectURL(file);
+  var img = new Image();
+  img.onload = function(){
+    try {
+      var k = Math.min(1, 1600 / Math.max(img.width, img.height));
+      var cv = document.createElement('canvas');
+      cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      var d = cv.toDataURL('image/jpeg', 0.82);
+      URL.revokeObjectURL(url);
+      ok(base + '.jpg', 'image/jpeg', d.split(',')[1]);
+    } catch (e) { URL.revokeObjectURL(url); brut(); }
+  };
+  img.onerror = function(){ URL.revokeObjectURL(url); brut(); };
+  img.src = url;
+}
+function htmlZonePj() {
+  if (FICHIER_DEP) {
+    return '<div class="pj-ligne"><span class="pj-nom">'+esc(FICHIER_DEP.name||'Facture')+'</span>'+
+      '<button class="btn-x" onclick="retirerFacture()" aria-label="Retirer la facture">×</button></div>';
+  }
+  return '<button type="button" class="btn-pj" onclick="document.getElementById(\'dep-fichier\').click()">Joindre la facture — photo ou PDF (facultatif)</button>';
+}
+function choisirFacture(input){
+  FICHIER_DEP = (input.files && input.files[0]) ? input.files[0] : null;
+  majZonePj();
+}
+function retirerFacture(){
+  FICHIER_DEP = null;
+  var i = document.getElementById('dep-fichier'); if (i) i.value = '';
+  majZonePj();
+}
+function majZonePj(){
+  var z = document.getElementById('dep-pj-zone'); if (z) z.innerHTML = htmlZonePj();
+}
+function toucherSuppr(cle, action) {
+  if (ARME===cle) { ARME=null; clearTimeout(ARME_TIMER); action(); return; }
+  ARME=cle; clearTimeout(ARME_TIMER);
+  ARME_TIMER=setTimeout(function(){ ARME=null; render(); },2500);
+  render();
+}
+function supprDepense(id){ toucherSuppr('dep-'+id, function(){ op({t:'delExpense',id:id}); }); }
+function ajouterCourse() {
+  var el = document.getElementById('pb-txt');
+  var t = el ? el.value.trim() : '';
+  if (!t) return;
+  op({t:'addCourse', txt:t});
+}
+function cocherCourse(id, fait){ op({t:'checkCourse', id:id, fait:fait}); }
+function supprCourse(id){ toucherSuppr('pb-'+id, function(){ op({t:'delCourse', id:id}); }); }
+function supprParticipant(id){ toucherSuppr('par-'+id, function(){ op({t:'delParticipant',id:id}); }); }
+function retirerChambre(pid){ op({t:'assignRoom',pid:pid,room:null}); }
+function ajouterChambre(room, sel){ if(sel.value) op({t:'assignRoom',pid:sel.value,room:room}); }
+function majParticipant(id, champ, v){ op({t:'setParticipant',id:id,champ:champ,valeur:v}); }
+function toggleNouveauFoyer(sel){
+  document.getElementById('fam-nouveau').style.display = sel.value==='__nouveau' ? 'block' : 'none';
+}
+function ajouterParticipant() {
+  var nom=document.getElementById('fam-nom').value.trim();
+  var foyer=document.getElementById('fam-foyer').value;
+  var poids=document.getElementById('fam-poids').value;
+  var err=document.getElementById('fam-erreur');
+  if(foyer==='__nouveau'){
+    foyer=document.getElementById('fam-nouveau').value.trim();
+    if(!foyer){err.textContent='Donne un nom au nouveau ménage.';return;}
+  }
+  if(!nom){err.textContent='Il manque un prénom.';return;}
+  if(!foyer){err.textContent='Choisis un ménage.';return;}
+  err.textContent='';
+  op({t:'addParticipant',nom:nom,foyer:foyer,poids:poids});
+}
+function allerTab(t){ TAB=t; NOTE_DEP=''; render(); window.scrollTo(0,0); }
+
+/* --- Réglages --- */
+
+function commitConfig(champ, el) {
+  var c = DATA.config||{};
+  var v = el.value.trim();
+  if ((champ==='debut'||champ==='fin') && !dateValide(v)) { render(); return; }
+  if (champ==='titre' && !v) { render(); return; }
+  if (v === (c[champ]||'')) return;
+  var patch = {}; patch[champ] = v;
+  op({t:'setConfig', patch:patch});
+}
+function commitProrata(coche){ op({t:'setConfig', patch:{prorata: coche?1:0}}); }
+function ajouterBatiment(){ op({t:'addBatiment', nom:'Maison '+(DATA.batiments.length+1)}); }
+function commitBatiment(id, el) {
+  var b = DATA.batiments.find(function(x){return x.id===id;});
+  var v = el.value.trim();
+  if (!v || !b || v===b.nom) { render(); return; }
+  op({t:'setBatiment', id:id, patch:{nom:v}});
+}
+function supprBatiment(id){ toucherSuppr('bat-'+id, function(){ op({t:'delBatiment',id:id}); }); }
+function ajouterRoom(bat){
+  var b = DATA.batiments.find(function(x){return x.id===bat;});
+  op({t:'addRoom', bat:bat, nom:'Chambre '+((b?b.rooms.length:0)+1)});
+}
+function roomPar(id) {
+  var r = null;
+  DATA.batiments.forEach(function(b){ b.rooms.forEach(function(x){ if(x.id===id) r=x; }); });
+  return r;
+}
+function commitRoom(id, champ, el) {
+  var r = roomPar(id);
+  if (!r) return;
+  var v = el.value.trim();
+  if (champ==='nom' && !v) { render(); return; }
+  if (String(r[champ]||'') === v) return;
+  var patch = {}; patch[champ] = v;
+  op({t:'setRoom', id:id, patch:patch});
+}
+function supprRoom(id){ toucherSuppr('room-'+id, function(){ op({t:'delRoom',id:id}); }); }
+function ajouterFoyer() {
+  var el = document.getElementById('reg-foyer');
+  var v = el ? el.value.trim() : '';
+  if (!v) return;
+  op({t:'addFoyer', nom:v});
+}
+function commitFoyer(el) {
+  var de = el.getAttribute('data-de');
+  var vers = el.value.trim();
+  if (!vers || vers===de) { render(); return; }
+  op({t:'renameFoyer', de:de, vers:vers});
+}
+function supprFoyer(i) {
+  var f = listeFoyers()[i];
+  if (f===undefined) return;
+  toucherSuppr('foy-'+f, function(){ op({t:'delFoyer', nom:f}); });
+}
+
+/* --- Wifi --- */
+
+function batPar(id){ return DATA.batiments.find(function(b){return b.id===id;}); }
+function wifiInfo(b){
+  var w = (DATA.wifi||{})[b.id]||{};
+  return { ssid: w.ssid||'', pass: w.pass||'' };
+}
+function commitWifi(id, champ, el) {
+  var v = el.value.trim();
+  if (v === wifiInfo(batPar(id))[champ]) return;
+  var patch = {}; patch[champ] = v;
+  op({t:'setWifi', id:id, patch:patch});
+}
+function copierMdp(id) {
+  copierTexte(wifiInfo(batPar(id)).pass, function(){
+    var b = document.getElementById('copie-'+id);
+    if (!b) return;
+    b.textContent = 'Copié ✓';
+    setTimeout(function(){
+      var b2 = document.getElementById('copie-'+id);
+      if (b2) b2.textContent = 'Copier le mot de passe';
+    }, 1500);
+  });
+}
+function toggleQR(id){ QR_OUVERT = QR_OUVERT===id ? null : id; render(); }
+function escWifi(s){ return String(s).replace(/([\\;,:"])/g,'\\$1'); }
+function majQR() {
+  var zone = document.getElementById('qr-code');
+  if (!zone || !QR_OUVERT || !window.QRCode) return;
+  var b = batPar(QR_OUVERT);
+  if (!b) return;
+  var w = wifiInfo(b);
+  new QRCode(zone, { text:'WIFI:T:WPA;S:'+escWifi(w.ssid)+';P:'+escWifi(w.pass)+';;',
+    width:190, height:190, correctLevel:QRCode.CorrectLevel.M });
+}
+
+/* --- Admin --- */
+
+function toucherAdmin() {
+  if (ADMIN_CRED) { togglePanneau(); return; }
+  LOGIN_UI = !LOGIN_UI;
+  render();
+}
+function loginAdmin() {
+  var email = document.getElementById('adm-email').value.trim();
+  var pass = document.getElementById('adm-pass').value;
+  var err = document.getElementById('adm-erreur');
+  if (!email || !pass) { err.textContent='Identifiant et mot de passe requis.'; return; }
+  err.textContent = '';
+  google.script.run.withSuccessHandler(function(j){
+    var r = JSON.parse(j);
+    var e2 = document.getElementById('adm-erreur');
+    if (!r.ok) { if (e2) e2.textContent = 'Identifiant ou mot de passe incorrect.'; return; }
+    ADMIN_CRED = { email: email, pass: pass };
+    ADMIN_CFG = r.cfg; LOGIN_UI = false; PANNEAU = true;
+    try { localStorage.setItem('sejour_admin_cred', JSON.stringify(ADMIN_CRED)); } catch(e) {}
+    render();
+  }).withFailureHandler(function(){
+    var e2 = document.getElementById('adm-erreur');
+    if (e2) e2.textContent = 'Connexion impossible. Vérifie ta connexion et réessaie.';
+  }).adminLogin(email, pass);
+}
+function deconnexionAdmin() {
+  try { localStorage.removeItem('sejour_admin_cred'); } catch(e) {}
+  ADMIN_CRED = null; ADMIN_CFG = null; PANNEAU = false;
+}
+function togglePanneau() {
+  PANNEAU = !PANNEAU;
+  if (PANNEAU && !ADMIN_CFG && ADMIN_CRED) {
+    google.script.run.withSuccessHandler(function(j){
+      var r = JSON.parse(j);
+      if (r.ok) { ADMIN_CFG = r.cfg; }
+      else { deconnexionAdmin(); LOGIN_UI = true; }
+      render();
+    }).withFailureHandler(function(){ setSync('échec'); }).adminLogin(ADMIN_CRED.email, ADMIN_CRED.pass);
+  }
+  render();
+}
+function sauverAlertes() {
+  setSync('…');
+  google.script.run.withSuccessHandler(function(j){
+    var r = JSON.parse(j);
+    if (r.ok) { ADMIN_CFG = r.cfg; setSync('ok'); setTimeout(function(){ setSync(''); }, 1200); }
+    else { deconnexionAdmin(); LOGIN_UI = true; setSync(''); }
+    render();
+  }).withFailureHandler(function(){ setSync('échec'); })
+  .adminSetAlertes(ADMIN_CRED.email, ADMIN_CRED.pass, JSON.stringify(ADMIN_CFG));
+}
+function basculerAlertes() { ADMIN_CFG.on = !ADMIN_CFG.on; sauverAlertes(); }
+function majCatAlerte(k, v) { ADMIN_CFG.cats[k] = v ? 1 : 0; sauverAlertes(); }
+function changerPass() {
+  var el = document.getElementById('adm-nouveau');
+  var err = document.getElementById('adm-perr');
+  var np = el ? el.value.trim() : '';
+  if (np.length < 4) { err.textContent = '4 caractères minimum.'; return; }
+  err.textContent = '';
+  google.script.run.withSuccessHandler(function(j){
+    var r = JSON.parse(j);
+    var e2 = document.getElementById('adm-perr');
+    if (!r.ok) { if (e2) e2.textContent = 'Échec. Déconnecte-toi et reconnecte-toi.'; return; }
+    ADMIN_CRED.pass = np;
+    try { localStorage.setItem('sejour_admin_cred', JSON.stringify(ADMIN_CRED)); } catch(e) {}
+    var e3 = document.getElementById('adm-nouveau'); if (e3) e3.value = '';
+    if (e2) { e2.style.color = '#2E7D5B'; e2.textContent = 'Mot de passe modifié.'; }
+  }).withFailureHandler(function(){
+    var e2 = document.getElementById('adm-perr');
+    if (e2) e2.textContent = 'Connexion impossible. Réessaie.';
+  }).adminSetPass(ADMIN_CRED.email, ADMIN_CRED.pass, np);
+}
+
+/* ------------------------- Partage ------------------------------------- */
+
+var ICONE_PARTAGE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.7l6.8-3.9M8.6 13.3l6.8 3.9"/></svg>';
+
+function titreApp(){ return (DATA.config && DATA.config.titre) || 'Séjour'; }
+function nomCuisine(m) {
+  if (Array.isArray(m.duo)) {
+    var noms = m.duo.map(function(id){ var p=parId(id); return p?p.nom:null; }).filter(Boolean);
+    return noms.length ? noms.join(' + ') : 'à pourvoir';
+  }
+  return m.team || 'à pourvoir';
+}
+function texteRepas() {
+  var l = ['Repas · '+titreApp()];
+  JOURS.forEach(function(j){
+    l.push('');
+    l.push(j.label);
+    j.slots.forEach(function(s){
+      var m = DATA.meals[j.id+'-'+s]||{};
+      l.push(SLOT_LABEL[s]+' : '+nomCuisine(m)+(m.menu?' · '+m.menu:''));
+    });
+  });
+  return l.join('\n');
+}
+function texteDepenses() {
+  var total = DATA.expenses.reduce(function(a,e){return a+(e.amount||0);},0);
+  var l = ['Dépenses · '+titreApp(), 'Total : '+eur(total)];
+  if (!DATA.expenses.length) { l.push(''); l.push('Aucune dépense pour l\'instant.'); return l.join('\n'); }
+  l.push('');
+  DATA.expenses.slice().sort(function(a,b){return a.ts-b.ts;}).forEach(function(e){
+    var cat = CATS.find(function(c){return c.id===e.link;});
+    l.push(e.label+' ('+e.payer+' · '+(cat?cat.label:slotNom(e.link))+') : '+eur(e.amount));
+  });
+  var aFaire = (DATA.liste||[]).filter(function(x){return !x.fait;});
+  if (aFaire.length) {
+    l.push(''); l.push('À acheter :');
+    aFaire.forEach(function(x){ l.push('- '+x.txt); });
+  }
+  return l.join('\n');
+}
+function texteComptes() {
+  var c = comptes();
+  var l = ['Comptes · '+titreApp(),
+           'Dépenses totales : '+eur(c.total),
+           'Coût par part : '+eur(c.coutPart)+' ('+frNum(c.totalParts)+' parts'+(c.prorata?', au prorata des nuits':'')+')',
+           '', 'Soldes par ménage :'];
+  c.lignes.forEach(function(x){
+    l.push(x.foyer+' ('+frNum(x.parts)+' parts) : '+(x.solde>=0?'+':'')+eur(x.solde));
+  });
+  l.push('');
+  l.push('Remboursements suggérés :');
+  if (!c.virements.length) l.push('Rien à rembourser : tout le monde est à l\'équilibre.');
+  c.virements.forEach(function(v){ l.push(v.de+' → '+v.vers+' : '+eur(v.montant)); });
+  return l.join('\n');
+}
+function texteChambres() {
+  var ch = DATA.chambres||{};
+  var l = ['Chambres · '+titreApp()];
+  var wl = [];
+  DATA.batiments.forEach(function(b){
+    var w = wifiInfo(b);
+    if (w.ssid) wl.push(b.nom+' : réseau '+w.ssid+(w.pass?', mot de passe '+w.pass:''));
+  });
+  if (wl.length) { l.push(''); l.push('Wifi'); wl.forEach(function(x){ l.push(x); }); }
+  DATA.batiments.forEach(function(b){
+    l.push('');
+    l.push(b.nom);
+    b.rooms.forEach(function(r){
+      var occ = DATA.participants.filter(function(p){ return ch[p.id]===r.id; });
+      l.push(r.nom+' : '+(occ.length?occ.map(function(p){return p.nom;}).join(', '):'libre'));
+    });
+  });
+  var sans = DATA.participants.filter(function(p){ return !ch[p.id]; });
+  if (sans.length) { l.push(''); l.push('Sans chambre : '+sans.map(function(p){return p.nom;}).join(', ')); }
+  return l.join('\n');
+}
+function texteFamille() {
+  var c = comptes();
+  var l = ['Famille · '+titreApp(),
+           DATA.participants.length+' personnes · '+frNum(c.totalParts)+' parts'];
+  listeFoyers().forEach(function(f){
+    var membres = DATA.participants.filter(function(p){return p.foyer===f;});
+    if (!membres.length) return;
+    l.push('');
+    l.push(f+' ('+frNum(c.partsParFoyer[f]||0)+' parts) : '+membres.map(function(p){
+      var w = parseFloat(p.poids)||0;
+      return p.nom+(w===0.5?' (½ part)':w===0?' (0 part)':'');
+    }).join(', '));
+  });
+  return l.join('\n');
+}
+function texteReglages() {
+  var c = DATA.config||{};
+  var l = [titreApp(), periodeCourte()+(c.sousTitre?' · '+c.sousTitre:'')];
+  return l.join('\n');
+}
+function texteCourses() {
+  var l = ['À acheter · '+titreApp()];
+  (DATA.liste||[]).filter(function(x){return !x.fait;}).forEach(function(x){ l.push('- '+x.txt); });
+  return l.join('\n');
+}
+function partagerTexte(t, fb) {
+  if (navigator.share) {
+    navigator.share({text:t}).catch(function(e){
+      if (!e || e.name!=='AbortError') copierTexte(t, fb);
+    });
+  } else copierTexte(t, fb);
+}
+function partagerTab() {
+  var t = TAB==='repas' ? texteRepas()
+        : TAB==='depenses' ? texteDepenses()
+        : TAB==='comptes' ? texteComptes()
+        : TAB==='chambres' ? texteChambres()
+        : TAB==='reglages' ? texteReglages()
+        : texteFamille();
+  partagerTexte(t);
+}
+function partagerCourses() {
+  partagerTexte(texteCourses(), function(){ feedbackPartage('btn-partage-pb'); });
+}
+function copierTexte(t, cb) {
+  var fin = cb || feedbackPartage;
+  function ok(){ fin(); }
+  function manuel(){
+    var ta = document.createElement('textarea');
+    ta.value = t; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    try { if (document.execCommand('copy')) fin(); } catch(e) {}
+    document.body.removeChild(ta);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(ok, manuel);
+  else manuel();
+}
+function feedbackPartage(id) {
+  var bid = (typeof id==='string') ? id : 'btn-partage';
+  var b = document.getElementById(bid);
+  if (!b) return;
+  b.textContent = '✓';
+  setTimeout(function(){
+    var b2 = document.getElementById(bid);
+    if (b2) b2.innerHTML = ICONE_PARTAGE;
+  }, 1200);
+}
+
+/* ------------------------- Rendus -------------------------------------- */
+
+function btnSuppr(cle, onclick, aria) {
+  var arme = ARME===cle;
+  return '<button class="btn-x'+(arme?' arme':'')+'" onclick="'+onclick+'" aria-label="'+esc(aria)+'">'+(arme?'Sûr ?':'×')+'</button>';
+}
+
+function renderRepas() {
+  if (!JOURS.length) return '<p class="aide">Règle d\'abord les dates du séjour dans l\'onglet Réglages : le planning des repas se créera tout seul.</p>';
+  var eqs = equipes();
+  var cuisiniers = DATA.participants.filter(function(p){ return (parseFloat(p.poids)||0)>=1; });
+  var h = '<p class="aide">Un ménage ou un binôme prend en général le déjeuner et le dîner du même jour.</p>';
+  JOURS.forEach(function(j){
+    h += '<section class="carte"><h2 class="jour-titre">'+j.label+'</h2>';
+    j.slots.forEach(function(s){
+      var id=j.id+'-'+s, m=DATA.meals[id]||{team:'',duo:null,menu:''};
+      var modeDuo = Array.isArray(m.duo);
+      var val = modeDuo ? '__duo' : (m.team||'');
+      h += '<div class="slot"><div class="slot-ligne"><span class="slot-label">'+SLOT_LABEL[s]+'</span>';
+      h += '<select class="'+(val?'':'select-vide')+'" onchange="choisirEquipe(\''+id+'\',this.value)">';
+      h += '<option value=""'+(val===''?' selected':'')+'>Qui cuisine ?</option>';
+      eqs.forEach(function(eq){ h+='<option value="'+esc(eq)+'"'+(val===eq?' selected':'')+'>'+esc(eq)+'</option>'; });
+      h += '<option value="__duo"'+(val==='__duo'?' selected':'')+'>Deux personnes au choix…</option>';
+      if (m.team && !modeDuo && eqs.indexOf(m.team)===-1) h+='<option value="'+esc(m.team)+'" selected>'+esc(m.team)+'</option>';
+      h += '</select></div>';
+      if (modeDuo) {
+        h += '<div class="duo-ligne">';
+        [0,1].forEach(function(n){
+          h += '<select class="flex1'+(m.duo[n]?'':' select-vide')+'" onchange="choisirDuo(\''+id+'\','+n+',this.value)" aria-label="'+(n===0?'Première personne':'Deuxième personne')+'">';
+          h += '<option value="">'+(n===0?'Qui ?':'Avec qui ?')+'</option>';
+          cuisiniers.forEach(function(p){
+            if (p.id===m.duo[1-n]) return;
+            h+='<option value="'+p.id+'"'+(m.duo[n]===p.id?' selected':'')+'>'+esc(p.nom)+'</option>';
+          });
+          h += '</select>';
+        });
+        h += '</div>';
+      }
+      h += '<input class="input-menu" value="'+esc(m.menu)+'" placeholder="Menu (facultatif)" onblur="commitMenu(\''+id+'\',this)">';
+      h += '</div>';
+    });
+    h += '</section>';
+  });
+  return h;
+}
+
+function renderDepenses() {
+  var foyers = listeFoyers();
+  var slots = []; JOURS.forEach(function(j){ j.slots.forEach(function(s){ slots.push(j.id+'-'+s); }); });
+  var total = DATA.expenses.reduce(function(a,e){return a+(e.amount||0);},0);
+  var pb = DATA.liste||[];
+  var aFaire = pb.filter(function(x){return !x.fait;});
+  var achetes = pb.filter(function(x){return x.fait;});
+  var h = '<section class="carte"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px">';
+  h += '<h2 class="carte-titre">Pense-bête de courses'+(aFaire.length?' <span class="dep-meta" style="font-weight:400">· '+aFaire.length+' à acheter</span>':'')+'</h2>';
+  if (aFaire.length) h += '<button id="btn-partage-pb" class="btn-refresh" style="flex:none;width:38px;height:38px" onclick="partagerCourses()" aria-label="Partager la liste de courses">'+ICONE_PARTAGE+'</button>';
+  h += '</div>';
+  h += '<div class="ligne-h"><input id="pb-txt" class="flex1" placeholder="À acheter (ex : pain, beurre salé…)" onkeydown="if(event.key===\'Enter\')ajouterCourse()">';
+  h += '<button class="btn" style="width:auto;padding:11px 16px" onclick="ajouterCourse()">Ajouter</button></div>';
+  if (!pb.length) h += '<p class="aide">« Il faudrait que quelqu\'un achète… » : note-le ici, celui qui fait les courses coche au fur et à mesure.</p>';
+  aFaire.concat(achetes).forEach(function(x){
+    var cible = x.fait ? 0 : 1;
+    h += '<div class="pb-item'+(x.fait?' fait':'')+'" onclick="cocherCourse(\''+x.id+'\','+cible+')">';
+    h += '<button class="pb-coche" aria-label="'+(x.fait?'Marquer '+esc(x.txt)+' à racheter':'Marquer '+esc(x.txt)+' comme acheté')+'">'+(x.fait?'✓':'')+'</button>';
+    h += '<span class="pb-txt">'+esc(x.txt)+'</span>';
+    h += btnSuppr('pb-'+x.id, "event.stopPropagation();supprCourse('"+x.id+"')", 'Retirer '+x.txt+' de la liste');
+    h += '</div>';
+  });
+  h += '</section>';
+  h += '<section class="carte"><h2 class="carte-titre">Ajouter une dépense</h2>';
+  h += '<input id="dep-label" placeholder="Libellé (ex : courses de lundi…)">';
+  h += '<div class="ligne-h"><input id="dep-montant" class="flex1" placeholder="Montant €" inputmode="decimal">';
+  h += '<select id="dep-payeur" class="flex14"><option value="">Payé par…</option>';
+  foyers.forEach(function(f){ h+='<option value="'+esc(f)+'">'+esc(f)+'</option>'; });
+  h += '</select></div>';
+  h += '<select id="dep-lien">';
+  CATS.forEach(function(c){ h+='<option value="'+c.id+'">'+c.label+'</option>'; });
+  slots.forEach(function(s){ h+='<option value="'+s+'">'+slotNom(s)+'</option>'; });
+  h += '</select>';
+  h += '<input type="file" id="dep-fichier" accept="image/*,application/pdf" style="display:none" onchange="choisirFacture(this)">';
+  h += '<div id="dep-pj-zone">'+htmlZonePj()+'</div>';
+  h += '<p id="dep-erreur" class="erreur"></p>';
+  h += '<button id="btn-dep" class="btn" onclick="ajouterDepense()">Enregistrer la dépense</button>';
+  if (NOTE_DEP) h += '<p class="note-pj">'+esc(NOTE_DEP)+'</p>';
+  h += '</section>';
+  h += '<div class="total-ligne"><span>Total engagé</span><strong class="chiffre">'+eur(total)+'</strong></div>';
+  var liste = DATA.expenses.slice().sort(function(a,b){return b.ts-a.ts;});
+  if (!liste.length) h += '<p class="aide">Aucune dépense pour l\'instant. La première course lancera les comptes.</p>';
+  liste.forEach(function(e){
+    var cat = CATS.find(function(c){return c.id===e.link;});
+    h += '<div class="depense"><div style="flex:1;min-width:0"><div class="dep-label">'+esc(e.label)+'</div>';
+    h += '<div class="dep-meta">'+esc(e.payer)+' · '+(cat?cat.label:slotNom(e.link));
+    if (e.pj) h += ' · <a class="dep-pj" href="https://drive.google.com/file/d/'+esc(e.pj)+'/view" target="_blank" rel="noopener">Facture</a>';
+    h += '</div></div>';
+    h += '<div class="chiffre" style="margin-left:8px">'+eur(e.amount)+'</div>';
+    h += btnSuppr('dep-'+e.id, "supprDepense('"+e.id+"')", 'Supprimer '+e.label);
+    h += '</div>';
+  });
+  return h;
+}
+
+function renderComptes() {
+  var c = comptes();
+  var h = '<section class="carte"><div class="resume">';
+  h += '<div><div class="resume-label">Dépenses totales</div><div class="chiffre" style="font-size:26px">'+eur(c.total)+'</div></div>';
+  h += '<div style="text-align:right"><div class="resume-label">Coût par part</div><div class="chiffre" style="font-size:26px">'+eur(c.coutPart)+'</div></div>';
+  h += '</div><div class="dep-meta">'+frNum(c.totalParts)+' parts au total'+(c.prorata?' · au prorata des nuits de présence (dates dans l\'onglet Famille)':'')+' · la pondération de chacun se règle dans l\'onglet Famille</div></section>';
+  h += '<section class="carte"><h2 class="carte-titre">Soldes par ménage</h2>';
+  c.lignes.forEach(function(l){
+    h += '<div class="ligne-foyer"><div style="flex:1"><div class="dep-label">'+esc(l.foyer)+'</div>';
+    h += '<div class="dep-meta">'+frNum(l.parts)+' parts · a payé '+eur(l.paye)+' · doit '+eur(l.du)+'</div></div>';
+    h += '<div class="chiffre" style="color:'+(l.solde>=0?'#2E7D5B':'#B3402E')+'">'+(l.solde>=0?'+':'')+eur(l.solde)+'</div></div>';
+  });
+  h += '</section><section class="carte"><h2 class="carte-titre">Remboursements de fin de séjour</h2>';
+  if (!c.virements.length) h += '<p class="aide">Rien à rembourser pour l\'instant : tout le monde est à l\'équilibre.</p>';
+  c.virements.forEach(function(v){
+    h += '<div class="virement"><span><strong>'+esc(v.de)+'</strong> → <strong>'+esc(v.vers)+'</strong></span><span class="chiffre">'+eur(v.montant)+'</span></div>';
+  });
+  h += '</section>';
+  return h;
+}
+
+function renderChambres() {
+  var ch = DATA.chambres||{};
+  var sans = DATA.participants.filter(function(p){ return !ch[p.id]; });
+  var h = '';
+  if (!DATA.batiments.length || !DATA.batiments.some(function(b){return b.rooms.length;})) {
+    h += '<p class="aide">Ajoute les logements et leurs chambres dans l\'onglet Réglages, puis répartis tout le monde ici.</p>';
+  }
+  if (DATA.batiments.length) {
+    h += '<section class="carte"><h2 class="carte-titre">Wifi</h2>';
+    h += '<p class="aide">La première personne qui trouve le mot de passe le saisit ici, tout le monde en profite. Le QR se scanne avec l\'appareil photo pour se connecter sans rien taper.</p>';
+    DATA.batiments.forEach(function(b){
+      var w = wifiInfo(b);
+      h += '<div class="chambre-bloc"><div class="dep-label">'+esc(b.nom)+'</div>';
+      h += '<div class="ligne-h">';
+      h += '<input class="flex1" value="'+esc(w.ssid)+'" placeholder="Nom du réseau" aria-label="Nom du réseau wifi '+esc(b.nom)+'" onblur="commitWifi(\''+b.id+'\',\'ssid\',this)">';
+      h += '<input class="flex1" value="'+esc(w.pass)+'" placeholder="Mot de passe" aria-label="Mot de passe wifi '+esc(b.nom)+'" onblur="commitWifi(\''+b.id+'\',\'pass\',this)">';
+      h += '</div>';
+      if (w.ssid && w.pass) {
+        h += '<div class="ligne-h">';
+        h += '<button id="copie-'+b.id+'" class="btn-wifi" onclick="copierMdp(\''+b.id+'\')">Copier le mot de passe</button>';
+        if (window.QRCode) h += '<button class="btn-wifi'+(QR_OUVERT===b.id?' actif':'')+'" onclick="toggleQR(\''+b.id+'\')">'+(QR_OUVERT===b.id?'Masquer le QR':'QR de connexion')+'</button>';
+        h += '</div>';
+        if (QR_OUVERT===b.id) h += '<div class="qr-zone"><div id="qr-code"></div><p class="aide">Scanne avec l\'appareil photo pour te connecter.</p></div>';
+      }
+      h += '</div>';
+    });
+    h += '</section>';
+  }
+  if (sans.length && DATA.batiments.some(function(b){return b.rooms.length;})) {
+    h += '<section class="carte alerte"><h2 class="carte-titre">Sans chambre ('+sans.length+')</h2><div class="chips">';
+    sans.forEach(function(p){ h+='<span class="chip">'+esc(p.nom)+'</span>'; });
+    h += '</div></section>';
+  }
+  DATA.batiments.forEach(function(b){
+    if (!b.rooms.length) return;
+    h += '<section class="carte"><h2 class="carte-titre" style="font-size:18px">'+esc(b.nom)+'</h2>';
+    b.rooms.forEach(function(r){
+      var occ = DATA.participants.filter(function(p){ return ch[p.id]===r.id; });
+      var surcharge = occ.length>r.cap;
+      h += '<div class="chambre-bloc"><div class="chambre-tete"><div><div class="dep-label">'+esc(r.nom)+'</div>'+(r.lits?'<div class="dep-meta">'+esc(r.lits)+'</div>':'')+'</div>';
+      h += '<span class="badge-cap'+(surcharge?' rouge':'')+'">'+occ.length+'/'+r.cap+'</span></div><div class="chips">';
+      occ.forEach(function(p){
+        h += '<span class="chip">'+esc(p.nom)+'<button onclick="retirerChambre(\''+p.id+'\')" aria-label="Retirer '+esc(p.nom)+'">×</button></span>';
+      });
+      h += '<select class="select-ajout" onchange="ajouterChambre(\''+r.id+'\',this)"><option value="">+ Ajouter</option>';
+      DATA.participants.forEach(function(p){
+        if (ch[p.id]===r.id) return;
+        h += '<option value="'+p.id+'">'+esc(p.nom)+(ch[p.id]?' (déjà placé)':'')+'</option>';
+      });
+      h += '</select></div>';
+      if (surcharge) h += '<p class="erreur">Plus de monde que de couchages dans cette chambre.</p>';
+      h += '</div>';
+    });
+    h += '</section>';
+  });
+  return h;
+}
+
+function renderFamille() {
+  var foyers = listeFoyers();
+  var c = comptes();
+  var proj = !!(DATA.config && DATA.config.prorata);
+  var h = '<p class="aide">Chaque personne est rattachée à un ménage (c\'est le ménage qui paie et qui est remboursé) et pèse 1 part (adulte, 10 ans et plus), ½ part (moins de 10 ans) ou 0 part (bébé, invité). Tout est modifiable au fil de l\'eau, les comptes suivent.</p>';
+  h += '<section class="carte"><h2 class="carte-titre">Ajouter quelqu\'un</h2>';
+  h += '<input id="fam-nom" placeholder="Prénom">';
+  h += '<div class="ligne-h"><select id="fam-foyer" class="flex14" onchange="toggleNouveauFoyer(this)"><option value="">Ménage…</option>';
+  foyers.forEach(function(f){ h+='<option value="'+esc(f)+'">'+esc(f)+'</option>'; });
+  h += '<option value="__nouveau">+ Nouveau ménage</option></select>';
+  h += '<select id="fam-poids" class="flex1"><option value="1">1 part</option><option value="0.5">½ part</option><option value="0">0 part</option></select></div>';
+  h += '<input id="fam-nouveau" placeholder="Nom du nouveau ménage" style="display:none">';
+  h += '<p id="fam-erreur" class="erreur"></p><button class="btn" onclick="ajouterParticipant()">Ajouter</button></section>';
+  if (JOURS.length) h += '<p class="aide">Les flèches « du … au … » sous chaque prénom indiquent qui est là quand'+(proj?' ; comme le prorata est activé, elles pèsent aussi dans les comptes.':'.')+'</p>';
+  foyers.forEach(function(f){
+    var membres = DATA.participants.filter(function(p){return p.foyer===f;});
+    if (!membres.length) return;
+    h += '<section class="carte"><div style="display:flex;justify-content:space-between;align-items:baseline">';
+    h += '<h2 class="carte-titre">'+esc(f)+'</h2><span class="dep-meta">'+frNum(c.partsParFoyer[f]||0)+' parts</span></div>';
+    membres.forEach(function(p){
+      h += '<div class="ligne-foyer"><div style="flex:1;min-width:0"><div class="dep-label">'+esc(p.nom)+'</div></div>';
+      h += '<select class="select-compact" style="max-width:124px" onchange="majParticipant(\''+p.id+'\',\'foyer\',this.value)" aria-label="Ménage de '+esc(p.nom)+'">';
+      foyers.forEach(function(ff){ h+='<option value="'+esc(ff)+'"'+(p.foyer===ff?' selected':'')+'>'+esc(ff)+'</option>'; });
+      h += '</select>';
+      h += '<select class="select-compact" style="width:66px" onchange="majParticipant(\''+p.id+'\',\'poids\',this.value)" aria-label="Parts de '+esc(p.nom)+'">';
+      [['1','1'],['0.5','½'],['0','0']].forEach(function(o){
+        h+='<option value="'+o[0]+'"'+(String(p.poids)===o[0]?' selected':'')+'>'+o[1]+'</option>';
+      });
+      h += '</select>';
+      h += btnSuppr('par-'+p.id, "supprParticipant('"+p.id+"')", 'Retirer '+p.nom);
+      h += '</div>';
+      if (JOURS.length) {
+        var b = bornesPresence(p);
+        h += '<div class="presence"><span class="dep-meta">du</span>';
+        h += '<select class="select-compact flex1" onchange="majParticipant(\''+p.id+'\',\'arrivee\',this.value)" aria-label="Arrivée de '+esc(p.nom)+'">';
+        JOURS.forEach(function(j){ h+='<option value="'+j.id+'"'+(b.a===j.id?' selected':'')+'>'+j.court+'</option>'; });
+        h += '</select><span class="dep-meta">au</span>';
+        h += '<select class="select-compact flex1" onchange="majParticipant(\''+p.id+'\',\'depart\',this.value)" aria-label="Départ de '+esc(p.nom)+'">';
+        JOURS.forEach(function(j){ h+='<option value="'+j.id+'"'+(b.d===j.id?' selected':'')+'>'+j.court+'</option>'; });
+        h += '</select></div>';
+      }
+    });
+    h += '</section>';
+  });
+  h += '<p class="aide">Total : '+DATA.participants.length+' personnes · '+frNum(c.totalParts)+' parts.</p>';
+  return h;
+}
+
+function renderReglages() {
+  var c = DATA.config||{};
+  var h = '<p class="aide">Tout le séjour se paramètre ici : titre, dates, ménages et logements. Le reste de l\'app s\'adapte automatiquement.</p>';
+  h += '<section class="carte"><h2 class="carte-titre">Le séjour</h2>';
+  h += '<input value="'+esc(c.titre||'')+'" placeholder="Nom du séjour (ex : Saint Jacut été 2026)" aria-label="Nom du séjour" onblur="commitConfig(\'titre\',this)">';
+  h += '<input value="'+esc(c.sousTitre||'')+'" placeholder="Lieu (facultatif, affiché sous le titre)" aria-label="Lieu du séjour" onblur="commitConfig(\'sousTitre\',this)">';
+  h += '<div class="ligne-h">';
+  h += '<div class="flex1"><div class="dep-meta" style="margin-bottom:4px">Arrivée</div><input type="date" value="'+esc(dateValide(c.debut)?c.debut:'')+'" aria-label="Date d\'arrivée" onchange="commitConfig(\'debut\',this)"></div>';
+  h += '<div class="flex1"><div class="dep-meta" style="margin-bottom:4px">Départ</div><input type="date" value="'+esc(dateValide(c.fin)?c.fin:'')+'" aria-label="Date de départ" onchange="commitConfig(\'fin\',this)"></div>';
+  h += '</div>';
+  if (dateValide(c.debut) && dateValide(c.fin) && c.fin < c.debut) h += '<p class="erreur">La date de départ est avant l\'arrivée.</p>';
+  else h += '<p class="aide">Le planning des repas couvre ces dates : dîner seulement le jour d\'arrivée, déjeuner seulement le jour du départ.</p>';
+  h += '<label class="alerte-cat"><input type="checkbox"'+(c.prorata?' checked':'')+' onchange="commitProrata(this.checked)"><span>Comptes au prorata des nuits de présence</span></label>';
+  h += '<p class="aide">'+(c.prorata?'Chacun paie selon ses nuits sur place. Les dates d\'arrivée et de départ de chacun se règlent dans l\'onglet Famille.':'Décoché : chaque part vaut pour tout le séjour, quelles que soient les dates de présence de chacun.')+'</p>';
+  h += '</section>';
+  h += '<section class="carte"><h2 class="carte-titre">Ménages</h2>';
+  h += '<p class="aide">Le ménage est l\'unité qui paie et qui est remboursée (une famille, un couple, une personne seule). Renomme directement dans le champ. Suppression possible quand le ménage est vide.</p>';
+  listeFoyers().forEach(function(f, i){
+    var nb = DATA.participants.filter(function(p){return p.foyer===f;}).length;
+    h += '<div class="ligne-h" style="align-items:center">';
+    h += '<input class="flex1" value="'+esc(f)+'" data-de="'+esc(f)+'" aria-label="Renommer le ménage '+esc(f)+'" onblur="commitFoyer(this)">';
+    h += '<span class="dep-meta" style="flex-shrink:0">'+nb+' pers.</span>';
+    if (!nb) h += btnSuppr('foy-'+f, 'supprFoyer('+i+')', 'Supprimer le ménage '+f);
+    h += '</div>';
+  });
+  h += '<div class="ligne-h"><input id="reg-foyer" class="flex1" placeholder="Nouveau ménage (ex : Durand)" onkeydown="if(event.key===\'Enter\')ajouterFoyer()">';
+  h += '<button class="btn" style="width:auto;padding:11px 16px" onclick="ajouterFoyer()">Ajouter</button></div>';
+  h += '</section>';
+  DATA.batiments.forEach(function(b){
+    h += '<section class="carte">';
+    h += '<div class="ligne-h" style="align-items:center">';
+    h += '<input class="flex1" style="font-weight:700" value="'+esc(b.nom)+'" aria-label="Nom du logement" onblur="commitBatiment(\''+b.id+'\',this)">';
+    h += btnSuppr('bat-'+b.id, "supprBatiment('"+b.id+"')", 'Supprimer le logement '+b.nom);
+    h += '</div>';
+    b.rooms.forEach(function(r){
+      h += '<div class="chambre-bloc">';
+      h += '<div class="ligne-h" style="align-items:center">';
+      h += '<input class="flex1" value="'+esc(r.nom)+'" aria-label="Nom de la chambre" onblur="commitRoom(\''+r.id+'\',\'nom\',this)">';
+      h += '<select class="select-compact" aria-label="Nombre de couchages" onchange="commitRoom(\''+r.id+'\',\'cap\',this)">';
+      for (var cp=1; cp<=12; cp++) h += '<option value="'+cp+'"'+(r.cap===cp?' selected':'')+'>'+cp+' pers.</option>';
+      h += '</select>';
+      h += btnSuppr('room-'+r.id, "supprRoom('"+r.id+"')", 'Supprimer '+r.nom);
+      h += '</div>';
+      h += '<input class="input-menu" style="margin-top:0" value="'+esc(r.lits||'')+'" placeholder="Lits (ex : 1 double + 1 simple, facultatif)" aria-label="Lits de '+esc(r.nom)+'" onblur="commitRoom(\''+r.id+'\',\'lits\',this)">';
+      h += '</div>';
+    });
+    h += '<button class="btn-pj" onclick="ajouterRoom(\''+b.id+'\')">+ Ajouter une chambre</button>';
+    h += '</section>';
+  });
+  h += '<button class="btn-pj" onclick="ajouterBatiment()">+ Ajouter un logement (maison, gîte, annexe…)</button>';
+  return h;
+}
+
+function render() {
+  if (!DATA) return;
+  JOURS = joursSejour();
+  var c = DATA.config||{};
+  try { document.title = c.titre || 'Séjour'; } catch(e) {}
+  var h = '<div class="mariniere" aria-hidden="true"></div>';
+  h += '<header class="entete"><div style="min-width:0"><div class="surtitre">'+esc(periodeCourte())+(c.sousTitre?' · '+esc(c.sousTitre):'')+'</div><h1>'+esc(c.titre||'Notre séjour')+'</h1></div>';
+  h += '<div style="display:flex;gap:8px;flex-shrink:0">';
+  h += '<button class="btn-discret'+(PANNEAU||LOGIN_UI?' actif':'')+'" onclick="toucherAdmin()" aria-label="Administration">⋯</button>';
+  h += '<button id="btn-partage" class="btn-refresh" onclick="partagerTab()" aria-label="Partager l\'onglet affiché">'+ICONE_PARTAGE+'</button>';
+  h += '<button id="btn-sync" class="btn-refresh" onclick="charger()" aria-label="Actualiser">⟳</button></div></header>';
+  h += '<p class="note-partage">Données communes à tout le groupe : ce que tu saisis ici est visible et modifiable par tous.</p>';
+  h += '<main class="contenu">';
+  if (LOGIN_UI && !ADMIN_CRED) {
+    h += '<section class="carte alerte"><h2 class="carte-titre">Connexion admin</h2>';
+    h += '<input id="adm-email" inputmode="email" autocomplete="username" placeholder="Identifiant (adresse mail)">';
+    h += '<input id="adm-pass" type="password" autocomplete="current-password" placeholder="Mot de passe" onkeydown="if(event.key===\'Enter\')loginAdmin()">';
+    h += '<p id="adm-erreur" class="erreur"></p>';
+    h += '<div class="ligne-h"><button class="btn flex1" onclick="loginAdmin()">Se connecter</button>';
+    h += '<button class="btn-x" onclick="LOGIN_UI=false;render()" aria-label="Annuler la connexion">Annuler</button></div>';
+    h += '</section>';
+  }
+  if (ADMIN_CRED && PANNEAU) {
+    h += '<section class="carte alerte"><h2 class="carte-titre">Alertes mail</h2>';
+    if (!ADMIN_CFG) h += '<p class="aide">Chargement…</p>';
+    else {
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px">';
+      h += '<div class="dep-meta" style="flex:1">'+(ADMIN_CFG.on?'Un mail à chaque modification des catégories cochées.':'Coupées, aucun mail envoyé.')+'</div>';
+      h += '<button class="btn" style="width:auto;padding:11px 16px" onclick="basculerAlertes()">'+(ADMIN_CFG.on?'Couper':'Activer')+'</button></div>';
+      if (ADMIN_CFG.on) {
+        CATS_ALERTES.forEach(function(cc){
+          h += '<label class="alerte-cat"><input type="checkbox"'+(ADMIN_CFG.cats[cc[0]]?' checked':'')+' onchange="majCatAlerte(\''+cc[0]+'\',this.checked)"><span>'+cc[1]+'</span></label>';
+        });
+      }
+      h += '<div class="dep-label" style="margin-top:4px">Mot de passe admin</div>';
+      h += '<div class="ligne-h"><input id="adm-nouveau" type="password" class="flex1" autocomplete="new-password" placeholder="Nouveau mot de passe">';
+      h += '<button class="btn" style="width:auto;padding:11px 14px" onclick="changerPass()">Changer</button></div>';
+      h += '<p id="adm-perr" class="erreur"></p>';
+      h += '<div class="dep-meta">Connecté : '+esc(ADMIN_CRED.email)+'</div>';
+      h += '<button class="btn-x" style="text-align:right;font-size:13px;padding:0" onclick="deconnexionAdmin();render()">Se déconnecter sur cet appareil</button>';
+    }
+    h += '</section>';
+  }
+  h += TAB==='repas' ? renderRepas()
+     : TAB==='depenses' ? renderDepenses()
+     : TAB==='comptes' ? renderComptes()
+     : TAB==='chambres' ? renderChambres()
+     : TAB==='reglages' ? renderReglages()
+     : renderFamille();
+  h += '</main>';
+  h += '<nav class="tabs">';
+  [['repas','Repas'],['depenses','Dépenses'],['comptes','Comptes'],['chambres','Chambres'],['famille','Famille'],['reglages','Réglages']].forEach(function(t){
+    h += '<button class="tab'+(TAB===t[0]?' actif':'')+'" onclick="allerTab(\''+t[0]+'\')">'+t[1]+'</button>';
+  });
+  h += '</nav>';
+  document.getElementById('app').innerHTML = h;
+  majQR();
+}
+
+document.addEventListener('visibilitychange', function(){
+  if (document.visibilityState==='visible' && DATA) charger();
+});
+try {
+  var credStock = localStorage.getItem('sejour_admin_cred');
+  if (credStock) ADMIN_CRED = JSON.parse(credStock);
+} catch(e) {}
+google.script.url.getLocation(function(loc){
+  if (loc && loc.parameter && loc.parameter.admin==='1' && !ADMIN_CRED) {
+    LOGIN_UI = true;
+    render();
+  }
+});
+charger();
+</script>
+</body>
+</html>
