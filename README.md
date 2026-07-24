@@ -41,7 +41,7 @@ automatiquement par `npx` à la première commande).
 ### 1. Récupérer le kit
 
 ```
-git clone https://github.com/VOTRE_COMPTE/kit-sejour-famille.git mon-sejour
+git clone https://github.com/joachimpomme-ctrl/kit-sejour-famille.git mon-sejour
 cd mon-sejour
 ```
 
