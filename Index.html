@@ -114,6 +114,7 @@ var FICHIER_DEP = null; // File choisi pour la facture (photo/PDF), avant envoi
 var NOTE_DEP = '';    // message informatif sous le formulaire de dépense
 var MAX_PJ = 5 * 1024 * 1024; // 5 Mo pour un fichier envoyé tel quel (PDF…)
 var QR_OUVERT = null; // id du bâtiment dont le QR wifi est affiché
+var PRESENCE_EDIT = false; // sélecteurs de dates d'arrivée/départ dépliés (onglet Famille)
 
 /* ------------------------- Utilitaires --------------------------------- */
 
@@ -390,6 +391,7 @@ function ajouterParticipant() {
   op({t:'addParticipant',nom:nom,foyer:foyer,poids:poids});
 }
 function allerTab(t){ TAB=t; NOTE_DEP=''; render(); window.scrollTo(0,0); }
+function togglePresence(){ PRESENCE_EDIT=!PRESENCE_EDIT; render(); }
 
 /* --- Réglages --- */
 
@@ -895,7 +897,10 @@ function renderFamille() {
   h += '<select id="fam-poids" class="flex1"><option value="1">1 part</option><option value="0.5">½ part</option><option value="0">0 part</option></select></div>';
   h += '<input id="fam-nouveau" placeholder="Nom du nouveau ménage" style="display:none">';
   h += '<p id="fam-erreur" class="erreur"></p><button class="btn" onclick="ajouterParticipant()">Ajouter</button></section>';
-  if (JOURS.length) h += '<p class="aide">Les flèches « du … au … » sous chaque prénom indiquent qui est là quand'+(proj?' ; comme le prorata est activé, elles pèsent aussi dans les comptes.':'.')+'</p>';
+  if (JOURS.length) {
+    h += '<button class="btn-pj" onclick="togglePresence()">'+(PRESENCE_EDIT?'Masquer les dates d\'arrivée et de départ':'Régler les dates d\'arrivée et de départ de chacun')+'</button>';
+    if (PRESENCE_EDIT) h += '<p class="aide">Par défaut, chacun est là tout le séjour'+(proj?'. Le prorata étant activé, ces dates pèsent dans les comptes.':'.')+'</p>';
+  }
   foyers.forEach(function(f){
     var membres = DATA.participants.filter(function(p){return p.foyer===f;});
     if (!membres.length) return;
@@ -915,13 +920,18 @@ function renderFamille() {
       h += '</div>';
       if (JOURS.length) {
         var b = bornesPresence(p);
-        h += '<div class="presence"><span class="dep-meta">du</span>';
-        h += '<select class="select-compact flex1" onchange="majParticipant(\''+p.id+'\',\'arrivee\',this.value)" aria-label="Arrivée de '+esc(p.nom)+'">';
-        JOURS.forEach(function(j){ h+='<option value="'+j.id+'"'+(b.a===j.id?' selected':'')+'>'+j.court+'</option>'; });
-        h += '</select><span class="dep-meta">au</span>';
-        h += '<select class="select-compact flex1" onchange="majParticipant(\''+p.id+'\',\'depart\',this.value)" aria-label="Départ de '+esc(p.nom)+'">';
-        JOURS.forEach(function(j){ h+='<option value="'+j.id+'"'+(b.d===j.id?' selected':'')+'>'+j.court+'</option>'; });
-        h += '</select></div>';
+        var cfg = DATA.config||{};
+        if (PRESENCE_EDIT) {
+          h += '<div class="presence"><span class="dep-meta">du</span>';
+          h += '<select class="select-compact flex1" onchange="majParticipant(\''+p.id+'\',\'arrivee\',this.value)" aria-label="Arrivée de '+esc(p.nom)+'">';
+          JOURS.forEach(function(j){ h+='<option value="'+j.id+'"'+(b.a===j.id?' selected':'')+'>'+j.court+'</option>'; });
+          h += '</select><span class="dep-meta">au</span>';
+          h += '<select class="select-compact flex1" onchange="majParticipant(\''+p.id+'\',\'depart\',this.value)" aria-label="Départ de '+esc(p.nom)+'">';
+          JOURS.forEach(function(j){ h+='<option value="'+j.id+'"'+(b.d===j.id?' selected':'')+'>'+j.court+'</option>'; });
+          h += '</select></div>';
+        } else if (b.a !== cfg.debut || b.d !== cfg.fin) {
+          h += '<div class="presence"><span class="dep-meta">présent du '+(dateValide(b.a)?jourCourt(enDate(b.a)):b.a)+' au '+(dateValide(b.d)?jourCourt(enDate(b.d)):b.d)+'</span></div>';
+        }
       }
     });
     h += '</section>';
