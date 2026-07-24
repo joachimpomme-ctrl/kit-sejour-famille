@@ -13,9 +13,9 @@ compte Google (Apps Script + un Google Sheet pour les données).
 
 ## Ce que fait l'appli
 
-- **Réglages** : titre du séjour, lieu, dates d'arrivée et de départ, ménages
-  (les unités qui paient), logements et chambres avec leurs couchages. Tout est
-  éditable directement dans l'appli, rien à coder.
+- **Réglages** : titre du séjour, lieu, dates d'arrivée et de départ,
+  logements et chambres avec leurs couchages. Tout est éditable directement
+  dans l'appli, rien à coder.
 - **Repas** : un planning déjeuner/dîner généré automatiquement d'après les
   dates (dîner seul le premier jour, déjeuner seul le dernier). Chaque service
   est pris par un ménage ou un binôme libre, avec menu facultatif.
@@ -25,8 +25,8 @@ compte Google (Apps Script + un Google Sheet pour les données).
   enfant de moins de 10 ans, 0 pour les bébés et invités), remboursements de
   fin de séjour suggérés automatiquement. Option : prorata des nuits de
   présence, pour les groupes où chacun arrive et repart quand il veut.
-- **Famille** : participants, ménages, parts, et dates d'arrivée/départ de
-  chacun.
+- **Famille** : participants, ménages (les unités qui paient : ajout,
+  renommage, suppression), parts, et dates d'arrivée/départ de chacun.
 - **Chambres** : répartition par logement avec alerte de surcapacité, encart
   wifi par bâtiment (mot de passe partagé + QR de connexion).
 - **Admin** (icône ⋯) : alertes mail à chaque modification, par catégorie,
@@ -109,7 +109,7 @@ d'accueil ».
 ### 6. Paramétrer le séjour
 
 Ouvrez le lien : l'appli démarre sur l'onglet **Réglages**. Donnez un titre,
-les dates, créez les ménages et les logements, puis ajoutez les participants
+les dates et les logements, puis créez les ménages et ajoutez les participants
 dans **Famille**. C'est prêt : partagez le lien dans le groupe WhatsApp.
 
 Admin : icône ⋯ en haut. Identifiant = votre adresse Gmail, mot de passe par

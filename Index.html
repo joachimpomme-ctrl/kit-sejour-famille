@@ -926,13 +926,26 @@ function renderFamille() {
     });
     h += '</section>';
   });
+  h += '<section class="carte"><h2 class="carte-titre">Ménages</h2>';
+  h += '<p class="aide">Renomme un ménage directement dans son champ (dépenses et repas suivent). Suppression possible quand le ménage est vide.</p>';
+  listeFoyers().forEach(function(f, i){
+    var nb = DATA.participants.filter(function(p){return p.foyer===f;}).length;
+    h += '<div class="ligne-h" style="align-items:center">';
+    h += '<input class="flex1" value="'+esc(f)+'" data-de="'+esc(f)+'" aria-label="Renommer le ménage '+esc(f)+'" onblur="commitFoyer(this)">';
+    h += '<span class="dep-meta" style="flex-shrink:0">'+nb+' pers.</span>';
+    if (!nb) h += btnSuppr('foy-'+f, 'supprFoyer('+i+')', 'Supprimer le ménage '+f);
+    h += '</div>';
+  });
+  h += '<div class="ligne-h"><input id="reg-foyer" class="flex1" placeholder="Nouveau ménage (ex : Durand)" onkeydown="if(event.key===\'Enter\')ajouterFoyer()">';
+  h += '<button class="btn" style="width:auto;padding:11px 16px" onclick="ajouterFoyer()">Ajouter</button></div>';
+  h += '</section>';
   h += '<p class="aide">Total : '+DATA.participants.length+' personnes · '+frNum(c.totalParts)+' parts.</p>';
   return h;
 }
 
 function renderReglages() {
   var c = DATA.config||{};
-  var h = '<p class="aide">Tout le séjour se paramètre ici : titre, dates, ménages et logements. Le reste de l\'app s\'adapte automatiquement.</p>';
+  var h = '<p class="aide">Le séjour se paramètre ici : titre, dates et logements. Les ménages et les participants se gèrent dans l\'onglet Famille.</p>';
   h += '<section class="carte"><h2 class="carte-titre">Le séjour</h2>';
   h += '<input value="'+esc(c.titre||'')+'" placeholder="Nom du séjour (ex : Saint Jacut été 2026)" aria-label="Nom du séjour" onblur="commitConfig(\'titre\',this)">';
   h += '<input value="'+esc(c.sousTitre||'')+'" placeholder="Lieu (facultatif, affiché sous le titre)" aria-label="Lieu du séjour" onblur="commitConfig(\'sousTitre\',this)">';
@@ -944,19 +957,6 @@ function renderReglages() {
   else h += '<p class="aide">Le planning des repas couvre ces dates : dîner seulement le jour d\'arrivée, déjeuner seulement le jour du départ.</p>';
   h += '<label class="alerte-cat"><input type="checkbox"'+(c.prorata?' checked':'')+' onchange="commitProrata(this.checked)"><span>Comptes au prorata des nuits de présence</span></label>';
   h += '<p class="aide">'+(c.prorata?'Chacun paie selon ses nuits sur place. Les dates d\'arrivée et de départ de chacun se règlent dans l\'onglet Famille.':'Décoché : chaque part vaut pour tout le séjour, quelles que soient les dates de présence de chacun.')+'</p>';
-  h += '</section>';
-  h += '<section class="carte"><h2 class="carte-titre">Ménages</h2>';
-  h += '<p class="aide">Le ménage est l\'unité qui paie et qui est remboursée (une famille, un couple, une personne seule). Renomme directement dans le champ. Suppression possible quand le ménage est vide.</p>';
-  listeFoyers().forEach(function(f, i){
-    var nb = DATA.participants.filter(function(p){return p.foyer===f;}).length;
-    h += '<div class="ligne-h" style="align-items:center">';
-    h += '<input class="flex1" value="'+esc(f)+'" data-de="'+esc(f)+'" aria-label="Renommer le ménage '+esc(f)+'" onblur="commitFoyer(this)">';
-    h += '<span class="dep-meta" style="flex-shrink:0">'+nb+' pers.</span>';
-    if (!nb) h += btnSuppr('foy-'+f, 'supprFoyer('+i+')', 'Supprimer le ménage '+f);
-    h += '</div>';
-  });
-  h += '<div class="ligne-h"><input id="reg-foyer" class="flex1" placeholder="Nouveau ménage (ex : Durand)" onkeydown="if(event.key===\'Enter\')ajouterFoyer()">';
-  h += '<button class="btn" style="width:auto;padding:11px 16px" onclick="ajouterFoyer()">Ajouter</button></div>';
   h += '</section>';
   DATA.batiments.forEach(function(b){
     h += '<section class="carte">';
