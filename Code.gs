@@ -14,6 +14,7 @@ var CAT_OP_ = {
   setMeal: 'repas',
   addExpense: 'depenses', delExpense: 'depenses',
   addParticipant: 'famille', delParticipant: 'famille', setParticipant: 'famille',
+  setPresence: 'famille',
   assignRoom: 'chambres',
   setWifi: 'wifi',
   addCourse: 'courses', checkCourse: 'courses', delCourse: 'courses',
@@ -286,6 +287,15 @@ function appliquer_(d, op) {
       }
       break;
     }
+    case 'setPresence': {
+      var ids = op.ids || [];
+      d.participants.forEach(function (p) {
+        if (ids.indexOf(p.id) === -1) return;
+        if (op.patch.hasOwnProperty('arrivee')) p.arrivee = dateSure_(op.patch.arrivee, '');
+        if (op.patch.hasOwnProperty('depart')) p.depart = dateSure_(op.patch.depart, '');
+      });
+      break;
+    }
     case 'assignRoom': {
       if (!d.chambres) d.chambres = {};
       if (op.room) d.chambres[op.pid] = op.room;
@@ -483,6 +493,12 @@ function decrireOp_(d, op) {
       var champs = { poids: 'parts', foyer: 'ménage', nom: 'nom', arrivee: 'arrivée', depart: 'départ' };
       var val = (op.champ === 'arrivee' || op.champ === 'depart') ? (jourFr_(op.valeur) || 'tout le séjour') : String(op.valeur).slice(0, 40);
       return 'Fiche de ' + (nomPar_(d, op.id) || op.id) + ' : ' + (champs[op.champ] || op.champ) + ' → ' + val;
+    }
+    case 'setPresence': {
+      var champP = op.patch && op.patch.hasOwnProperty('arrivee') ? 'arrivee' : 'depart';
+      var valP = jourFr_(op.patch && op.patch[champP]) || 'tout le séjour';
+      return 'Présence du ménage ' + String(op.foyer || '?').slice(0, 40) + ' : ' +
+        (champP === 'arrivee' ? 'arrivée' : 'départ') + ' → ' + valP;
     }
     case 'assignRoom': {
       var nom = nomPar_(d, op.pid) || op.pid;
