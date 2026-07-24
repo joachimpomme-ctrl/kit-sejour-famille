@@ -679,6 +679,42 @@ function texteReglages() {
   var l = [titreApp(), periodeCourte()+(c.sousTitre?' · '+c.sousTitre:'')];
   return l.join('\n');
 }
+/** Récap de présence par ménage : une entrée par ménage, avec détail par
+ *  personne quand les dates diffèrent au sein du ménage. */
+function recapPresence() {
+  var res = [];
+  listeFoyers().forEach(function(f){
+    var membres = DATA.participants.filter(function(p){return p.foyer===f;});
+    if (!membres.length) return;
+    var bs = membres.map(bornesPresence);
+    var meme = bs.every(function(x){return x.a===bs[0].a && x.d===bs[0].d;});
+    res.push({ foyer:f, n:membres.length, meme:meme, b:bs[0],
+      detail: meme ? null : membres.map(function(p,i){ return {nom:p.nom, b:bs[i]}; }) });
+  });
+  return res;
+}
+function libPresence(b) {
+  var cfg = DATA.config||{};
+  if (!dateValide(b.a) || !dateValide(b.d)) return '';
+  if (b.a===cfg.debut && b.d===cfg.fin) return 'tout le séjour';
+  if (b.a===cfg.debut) return 'jusqu\'au '+jourCourt(enDate(b.d));
+  if (b.d===cfg.fin) return 'à partir du '+jourCourt(enDate(b.a));
+  return 'du '+jourCourt(enDate(b.a))+' au '+jourCourt(enDate(b.d));
+}
+function textePresences() {
+  var l = ['Qui est là quand · '+titreApp(), periodeCourte(), ''];
+  recapPresence().forEach(function(r){
+    if (r.meme) l.push(r.foyer+' ('+r.n+') : '+libPresence(r.b));
+    else {
+      l.push(r.foyer+' :');
+      r.detail.forEach(function(d){ l.push('- '+d.nom+' : '+libPresence(d.b)); });
+    }
+  });
+  return l.join('\n');
+}
+function partagerPresences() {
+  partagerTexte(textePresences(), function(){ feedbackPartage('btn-partage-pres'); });
+}
 function texteCourses() {
   var l = ['À acheter · '+titreApp()];
   (DATA.liste||[]).filter(function(x){return !x.fait;}).forEach(function(x){ l.push('- '+x.txt); });
@@ -922,7 +958,27 @@ function renderFamille() {
   h += '<p id="fam-erreur" class="erreur"></p><button class="btn" onclick="ajouterParticipant()">Ajouter</button></section>';
   if (JOURS.length) {
     h += '<button class="btn-pj" onclick="togglePresence()">'+(PRESENCE_EDIT?'Masquer les dates d\'arrivée et de départ':'Régler les dates d\'arrivée et de départ de chacun')+'</button>';
-    if (PRESENCE_EDIT) h += '<p class="aide">Par défaut, chacun est là tout le séjour'+(proj?'. Le prorata étant activé, ces dates pèsent dans les comptes.':'.')+'</p>';
+    if (PRESENCE_EDIT) h += '<p class="aide">Par défaut, chacun est là tout le séjour. La ligne « du … au … » règle tout le ménage d\'un coup ; « Par personne » pour les exceptions'+(proj?'. Le prorata étant activé, ces dates pèsent dans les comptes.':'.')+'</p>';
+    if (DATA.participants.length) {
+      var recap = recapPresence();
+      h += '<section class="carte"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px">';
+      h += '<h2 class="carte-titre">Qui est là quand</h2>';
+      h += '<button id="btn-partage-pres" class="btn-refresh" style="flex:none;width:38px;height:38px" onclick="partagerPresences()" aria-label="Partager le planning des présences">'+ICONE_PARTAGE+'</button>';
+      h += '</div>';
+      recap.forEach(function(r){
+        if (r.meme) {
+          h += '<div class="ligne-foyer"><div style="flex:1;min-width:0"><span class="dep-label">'+esc(r.foyer)+'</span> <span class="dep-meta">· '+r.n+' pers.</span></div>';
+          h += '<span class="dep-meta" style="flex-shrink:0">'+esc(libPresence(r.b))+'</span></div>';
+        } else {
+          h += '<div class="ligne-foyer"><div class="dep-label">'+esc(r.foyer)+'</div></div>';
+          r.detail.forEach(function(d){
+            h += '<div style="display:flex;justify-content:space-between;gap:8px;padding:2px 0 2px 14px"><span style="font-size:14px">'+esc(d.nom)+'</span>';
+            h += '<span class="dep-meta" style="flex-shrink:0">'+esc(libPresence(d.b))+'</span></div>';
+          });
+        }
+      });
+      h += '</section>';
+    }
   }
   foyers.forEach(function(f, fi){
     var membres = DATA.participants.filter(function(p){return p.foyer===f;});
