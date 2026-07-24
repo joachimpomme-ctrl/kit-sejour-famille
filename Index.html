@@ -119,6 +119,7 @@ var MAX_PJ = 5 * 1024 * 1024; // 5 Mo pour un fichier envoyé tel quel (PDF…)
 var QR_OUVERT = null; // id du bâtiment dont le QR wifi est affiché
 var PRESENCE_EDIT = false; // sélecteurs de dates d'arrivée/départ dépliés (onglet Famille)
 var PRESENCE_DETAIL = {}; // ménages dont le détail par personne est ouvert (mode édition)
+var PRESENCE_FOYERS = {}; // ménages dont l'édition des dates est ouverte individuellement
 
 /* ------------------------- Utilitaires --------------------------------- */
 
@@ -400,7 +401,14 @@ function ajouterParticipant() {
   op({t:'addParticipant',nom:nom,foyer:foyer,poids:poids});
 }
 function allerTab(t){ TAB=t; NOTE_DEP=''; render(); window.scrollTo(0,0); }
-function togglePresence(){ PRESENCE_EDIT=!PRESENCE_EDIT; if(!PRESENCE_EDIT) PRESENCE_DETAIL={}; render(); }
+function togglePresence(){ PRESENCE_EDIT=!PRESENCE_EDIT; if(!PRESENCE_EDIT){ PRESENCE_DETAIL={}; PRESENCE_FOYERS={}; } render(); }
+function togglePresenceFoyer(i){
+  var f = listeFoyers()[i];
+  if (f===undefined) return;
+  PRESENCE_FOYERS[f] = !PRESENCE_FOYERS[f];
+  if (!PRESENCE_FOYERS[f]) delete PRESENCE_DETAIL[f];
+  render();
+}
 function toggleDetailPresence(i){
   var f = listeFoyers()[i];
   if (f===undefined) return;
@@ -592,6 +600,7 @@ function changerPass() {
 /* ------------------------- Partage ------------------------------------- */
 
 var ICONE_PARTAGE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.7l6.8-3.9M8.6 13.3l6.8 3.9"/></svg>';
+var ICONE_DATES = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></svg>';
 
 function titreApp(){ return (DATA.config && DATA.config.titre) || 'Séjour'; }
 function nomCuisine(m) {
@@ -998,10 +1007,13 @@ function renderFamille() {
     var membres = DATA.participants.filter(function(p){return p.foyer===f;});
     if (!membres.length) return;
     var cfg = DATA.config||{};
-    h += '<section class="carte"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">';
+    var edF = PRESENCE_EDIT || !!PRESENCE_FOYERS[f];
+    h += '<section class="carte"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px">';
     h += '<input class="carte-titre input-nu flex1" value="'+esc(f)+'" data-de="'+esc(f)+'" aria-label="Renommer le ménage '+esc(f)+'" onblur="commitFoyer(this)">';
-    h += '<span class="dep-meta" style="flex-shrink:0">'+frNum(c.partsParFoyer[f]||0)+' parts</span></div>';
-    if (JOURS.length && PRESENCE_EDIT) {
+    h += '<span class="dep-meta" style="flex-shrink:0">'+frNum(c.partsParFoyer[f]||0)+' parts</span>';
+    if (JOURS.length) h += '<button class="btn-discret'+(edF?' actif':'')+'" style="width:34px;height:34px;flex-shrink:0" onclick="togglePresenceFoyer('+fi+')" aria-label="Régler les dates d\'arrivée et de départ du ménage '+esc(f)+'">'+ICONE_DATES+'</button>';
+    h += '</div>';
+    if (JOURS.length && edF) {
       var bs = membres.map(bornesPresence);
       var aCom = bs.every(function(x){return x.a===bs[0].a;}) ? bs[0].a : null;
       var dCom = bs.every(function(x){return x.d===bs[0].d;}) ? bs[0].d : null;
@@ -1031,7 +1043,7 @@ function renderFamille() {
       h += '</div>';
       if (JOURS.length) {
         var b = bornesPresence(p);
-        if (PRESENCE_EDIT && PRESENCE_DETAIL[f]) {
+        if (edF && PRESENCE_DETAIL[f]) {
           h += '<div class="presence"><span class="dep-meta">du</span>';
           h += '<select class="select-compact flex1" onchange="majParticipant(\''+p.id+'\',\'arrivee\',this.value)" aria-label="Arrivée de '+esc(p.nom)+'">';
           JOURS.forEach(function(j){ h+='<option value="'+j.id+'"'+(b.a===j.id?' selected':'')+'>'+j.court+'</option>'; });
@@ -1039,7 +1051,7 @@ function renderFamille() {
           h += '<select class="select-compact flex1" onchange="majParticipant(\''+p.id+'\',\'depart\',this.value)" aria-label="Départ de '+esc(p.nom)+'">';
           JOURS.forEach(function(j){ h+='<option value="'+j.id+'"'+(b.d===j.id?' selected':'')+'>'+j.court+'</option>'; });
           h += '</select></div>';
-        } else if (!PRESENCE_EDIT && (b.a !== cfg.debut || b.d !== cfg.fin)) {
+        } else if (!edF && (b.a !== cfg.debut || b.d !== cfg.fin)) {
           h += '<div class="presence"><span class="dep-meta">présent du '+(dateValide(b.a)?jourCourt(enDate(b.a)):b.a)+' au '+(dateValide(b.d)?jourCourt(enDate(b.d)):b.d)+'</span></div>';
         }
       }
