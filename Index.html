@@ -35,7 +35,8 @@ input:focus, select:focus, button:focus-visible { outline:2px solid #1E3350; out
 .input-nu { border:none; background:transparent; border-radius:0; padding:4px 0; border-bottom:1px dashed #D8D3C6; }
 .input-nu:focus { outline:none; border-bottom:1.5px solid #1E3350; }
 .input-menu { margin-top:6px; border-style:dashed; background:transparent; padding:8px 12px; }
-.duo-ligne { display:flex; gap:8px; margin-top:6px; }
+.duo-ligne { display:flex; flex-wrap:wrap; gap:6px 8px; margin-top:6px; }
+.duo-ligne select { flex:1 1 45%; min-width:45%; width:auto; }
 .ligne-h { display:flex; gap:8px; }
 .ligne-h > * { min-width:0; }
 .flex1 { flex:1; } .flex14 { flex:1.4; }
@@ -268,13 +269,18 @@ function op(o) {
 /* ------------------------- Actions ------------------------------------- */
 
 function choisirEquipe(slot, v) {
-  if (v==='__duo') op({t:'setMeal',slot:slot,patch:{team:'',duo:['','']}});
+  if (v==='__duo') op({t:'setMeal',slot:slot,patch:{team:'',duo:[]}});
   else op({t:'setMeal',slot:slot,patch:{team:v,duo:null}});
 }
+/* duo = équipe libre de 1 à N personnes ; n = position dans l'équipe,
+   n au-delà de la fin = ajout, valeur vide = retrait. */
 function choisirDuo(slot, n, v) {
-  var m = DATA.meals[slot]||{duo:['','']};
-  var duo = (m.duo||['','']).slice(); duo[n]=v;
-  op({t:'setMeal',slot:slot,patch:{duo:duo}});
+  var m = DATA.meals[slot]||{};
+  var crew = (m.duo||[]).filter(Boolean);
+  if (n >= crew.length) { if (v) crew.push(v); }
+  else if (v) crew[n] = v;
+  else crew.splice(n, 1);
+  op({t:'setMeal',slot:slot,patch:{duo:crew}});
 }
 function commitMenu(slot, el) {
   var actuel = (DATA.meals[slot]||{}).menu||'';
@@ -774,7 +780,7 @@ function renderRepas() {
   if (!JOURS.length) return '<p class="aide">Règle d\'abord les dates du séjour dans l\'onglet Réglages : le planning des repas se créera tout seul.</p>';
   var eqs = equipes();
   var cuisiniers = DATA.participants.filter(function(p){ return (parseFloat(p.poids)||0)>=1; });
-  var h = '<p class="aide">Un ménage ou un binôme prend en général le déjeuner et le dîner du même jour.</p>';
+  var h = '<p class="aide">Un ménage ou une petite équipe de volontaires prend en général le déjeuner et le dîner du même jour.</p>';
   JOURS.forEach(function(j){
     h += '<section class="carte"><h2 class="jour-titre">'+j.label+'</h2>';
     j.slots.forEach(function(s){
@@ -785,20 +791,28 @@ function renderRepas() {
       h += '<select class="'+(val?'':'select-vide')+'" onchange="choisirEquipe(\''+id+'\',this.value)">';
       h += '<option value=""'+(val===''?' selected':'')+'>Qui cuisine ?</option>';
       eqs.forEach(function(eq){ h+='<option value="'+esc(eq)+'"'+(val===eq?' selected':'')+'>'+esc(eq)+'</option>'; });
-      h += '<option value="__duo"'+(val==='__duo'?' selected':'')+'>Deux personnes au choix…</option>';
+      h += '<option value="__duo"'+(val==='__duo'?' selected':'')+'>2 personnes ou + au choix…</option>';
       if (m.team && !modeDuo && eqs.indexOf(m.team)===-1) h+='<option value="'+esc(m.team)+'" selected>'+esc(m.team)+'</option>';
       h += '</select></div>';
       if (modeDuo) {
+        var crew = m.duo.filter(Boolean);
         h += '<div class="duo-ligne">';
-        [0,1].forEach(function(n){
-          h += '<select class="flex1'+(m.duo[n]?'':' select-vide')+'" onchange="choisirDuo(\''+id+'\','+n+',this.value)" aria-label="'+(n===0?'Première personne':'Deuxième personne')+'">';
-          h += '<option value="">'+(n===0?'Qui ?':'Avec qui ?')+'</option>';
+        crew.forEach(function(pid, n){
+          h += '<select onchange="choisirDuo(\''+id+'\','+n+',this.value)" aria-label="Personne '+(n+1)+'">';
+          h += '<option value="">Retirer</option>';
           cuisiniers.forEach(function(p){
-            if (p.id===m.duo[1-n]) return;
-            h+='<option value="'+p.id+'"'+(m.duo[n]===p.id?' selected':'')+'>'+esc(p.nom)+'</option>';
+            if (crew.indexOf(p.id)!==-1 && p.id!==pid) return;
+            h+='<option value="'+p.id+'"'+(pid===p.id?' selected':'')+'>'+esc(p.nom)+'</option>';
           });
           h += '</select>';
         });
+        h += '<select class="select-vide" onchange="choisirDuo(\''+id+'\','+crew.length+',this.value)" aria-label="Ajouter quelqu\'un à l\'équipe">';
+        h += '<option value="" selected>'+(crew.length?'Ajouter…':'Qui ?')+'</option>';
+        cuisiniers.forEach(function(p){
+          if (crew.indexOf(p.id)!==-1) return;
+          h+='<option value="'+p.id+'">'+esc(p.nom)+'</option>';
+        });
+        h += '</select>';
         h += '</div>';
       }
       h += '<input class="input-menu" value="'+esc(m.menu)+'" placeholder="Menu (facultatif)" onblur="commitMenu(\''+id+'\',this)">';
