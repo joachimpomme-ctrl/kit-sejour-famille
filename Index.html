@@ -95,7 +95,7 @@ input[type=date] { min-height:44px; }
 /* ------------------------- Constantes locales ------------------------- */
 
 var SLOT_LABEL = { dej:'Déjeuner', din:'Dîner' };
-var CATS = [ {id:'courses',label:'Courses communes'}, {id:'apero',label:'Apéro'}, {id:'autre',label:'Autre'} ];
+var CATS = [ {id:'courses',label:'Courses communes'}, {id:'apero',label:'Apéro / alcool'}, {id:'autre',label:'Autre'} ];
 var JOURS_FR = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 var JOURS_FR_COURT = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
 var MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
@@ -169,6 +169,11 @@ function periodeCourte() {
   var a = enDate(c.debut), b = enDate(c.fin);
   return numFr(a.getDate())+' '+MOIS_FR[a.getMonth()]+' → '+numFr(b.getDate())+' '+MOIS_FR[b.getMonth()];
 }
+function lienLabel(e) {
+  if (Array.isArray(e.pour) && e.pour.length) return 'pour '+e.pour.join(' + ');
+  var cat = CATS.find(function(c){return c.id===e.link;});
+  return cat ? cat.label : slotNom(e.link);
+}
 function slotNom(id) {
   var i = String(id).lastIndexOf('-');
   if (i === -1) return id;
@@ -207,6 +212,10 @@ function equipes() {
 }
 function parId(id) { return DATA.participants.find(function(p){return p.id===id;}); }
 
+/** Concerné par les dépenses apéro/alcool ; défaut : les personnes à 1 part. */
+function aperoDe(p) {
+  return p.hasOwnProperty('apero') ? !!p.apero : (parseFloat(p.poids)||0) >= 1;
+}
 function comptes() {
   var c = DATA.config||{};
   var nuitsTotal = nuitsEntre(c.debut, c.fin);
@@ -217,16 +226,80 @@ function comptes() {
     var b = bornesPresence(p);
     return w * nuitsEntre(b.a, b.d) / nuitsTotal;
   }
-  var foyers = listeFoyers(), parts = {}, paye = {};
-  foyers.forEach(function(f){ parts[f]=0; paye[f]=0; });
-  DATA.participants.forEach(function(p){ parts[p.foyer]=(parts[p.foyer]||0)+poidsEff(p); });
-  var total = 0;
-  DATA.expenses.forEach(function(e){ total+=e.amount||0; if(paye[e.payer]===undefined)paye[e.payer]=0; paye[e.payer]+=e.amount||0; });
-  var totalParts = 0; Object.keys(parts).forEach(function(f){ totalParts+=parts[f]; });
-  var coutPart = totalParts>0 ? total/totalParts : 0;
+  var foyers = listeFoyers(), parts = {}, aperoP = {}, paye = {}, du = {};
+  foyers.forEach(function(f){ parts[f]=0; aperoP[f]=0; paye[f]=0; du[f]=0; });
+  DATA.participants.forEach(function(p){
+    var w = poidsEff(p);
+    parts[p.foyer]=(parts[p.foyer]||0)+w;
+    if (aperoDe(p)) aperoP[p.foyer]=(aperoP[p.foyer]||0)+w;
+  });
+  var totalParts = 0, totalApero = 0;
+  Object.keys(parts).forEach(function(f){ totalParts+=parts[f]; totalApero+=aperoP[f]||0; });
+  /* Assiduité aux repas : les absents signalés sur un repas (onglet Repas) et
+     les personnes pas encore arrivées ou déjà reparties ne comptent ni pour ce
+     repas ni, au prorata, pour les courses communes. */
+  var jours = joursSejour();
+  var slotsSejour = [];
+  jours.forEach(function(j){ j.slots.forEach(function(s){ slotsSejour.push(j.id+'-'+s); }); });
+  function presentSlot(p, slotId) {
+    var i = slotId.lastIndexOf('-'), day = slotId.slice(0,i), svc = slotId.slice(i+1);
+    var b = bornesPresence(p);
+    if (day < b.a || day > b.d) return false;
+    if (b.a !== b.d || day !== b.a) {
+      if (day === b.a && svc === 'dej') return false;
+      if (day === b.d && svc === 'din') return false;
+    }
+    var mm = DATA.meals[slotId];
+    return !(mm && Array.isArray(mm.absents) && mm.absents.indexOf(p.id) !== -1);
+  }
+  var assP = {}, totalAss = 0, nbAbsents = 0;
+  foyers.forEach(function(f){ assP[f]=0; });
+  slotsSejour.forEach(function(s){ var mm=DATA.meals[s]; if (mm && Array.isArray(mm.absents)) nbAbsents += mm.absents.length; });
+  DATA.participants.forEach(function(p){
+    var w = parseFloat(p.poids)||0;
+    if (!w || !slotsSejour.length) return;
+    var cnt = 0; slotsSejour.forEach(function(s){ if (presentSlot(p,s)) cnt++; });
+    var a = w * cnt / slotsSejour.length;
+    assP[p.foyer]=(assP[p.foyer]||0)+a; totalAss += a;
+  });
+  /* Répartition dépense par dépense : ciblée sur des ménages (e.pour),
+     apéro/alcool (personnes concernées seulement), liée à un repas (présents
+     de ce repas), courses (assiduité aux repas), ou commune (tout le monde). */
+  var total = 0, totGeneral = 0, totApero = 0, totCible = 0;
+  DATA.expenses.forEach(function(e){
+    var m = e.amount||0;
+    total += m;
+    if (paye[e.payer]===undefined) { paye[e.payer]=0; du[e.payer]=0; }
+    paye[e.payer] += m;
+    var cible = Array.isArray(e.pour) ? e.pour.filter(function(f){ return parts.hasOwnProperty(f); }) : [];
+    if (cible.length) {
+      totCible += m;
+      var pc = 0; cible.forEach(function(f){ pc += parts[f]||0; });
+      if (pc > 0) cible.forEach(function(f){ du[f] += m*(parts[f]||0)/pc; });
+      else cible.forEach(function(f){ du[f] += m/cible.length; });
+    } else if (e.link==='apero' && totalApero > 0) {
+      totApero += m;
+      Object.keys(aperoP).forEach(function(f){ du[f] += m*(aperoP[f]||0)/totalApero; });
+    } else if (slotsSejour.length && slotsSejour.indexOf(e.link) !== -1) {
+      totGeneral += m;
+      var ps = {}, pt = 0;
+      DATA.participants.forEach(function(p){
+        var w = parseFloat(p.poids)||0;
+        if (w && presentSlot(p, e.link)) { ps[p.foyer]=(ps[p.foyer]||0)+w; pt += w; }
+      });
+      if (pt > 0) Object.keys(ps).forEach(function(f){ du[f] += m*ps[f]/pt; });
+      else if (totalParts > 0) Object.keys(parts).forEach(function(f){ du[f] += m*(parts[f]||0)/totalParts; });
+    } else if (e.link==='courses' && totalAss > 0) {
+      totGeneral += m;
+      Object.keys(assP).forEach(function(f){ du[f] += m*(assP[f]||0)/totalAss; });
+    } else {
+      totGeneral += m;
+      if (totalParts > 0) Object.keys(parts).forEach(function(f){ du[f] += m*(parts[f]||0)/totalParts; });
+    }
+  });
+  var coutPart = totalParts>0 ? totGeneral/totalParts : 0;
   var lignes = Object.keys(paye).map(function(f){
-    var du=(parts[f]||0)*coutPart;
-    return { foyer:f, parts:parts[f]||0, paye:paye[f]||0, du:du, solde:(paye[f]||0)-du };
+    return { foyer:f, parts:parts[f]||0, paye:paye[f]||0, du:du[f]||0, solde:(paye[f]||0)-(du[f]||0) };
   });
   var deb=lignes.filter(function(l){return l.solde<-0.01;}).map(function(l){return{f:l.foyer,m:-l.solde};}).sort(function(a,b){return b.m-a.m;});
   var cre=lignes.filter(function(l){return l.solde>0.01;}).map(function(l){return{f:l.foyer,m:l.solde};}).sort(function(a,b){return b.m-a.m;});
@@ -237,7 +310,8 @@ function comptes() {
     deb[i].m-=m; cre[j].m-=m;
     if(deb[i].m<0.01)i++; if(cre[j].m<0.01)j++;
   }
-  return { total:total, totalParts:totalParts, coutPart:coutPart, lignes:lignes, virements:vir, partsParFoyer:parts, prorata:prorata };
+  return { total:total, totalParts:totalParts, coutPart:coutPart, lignes:lignes, virements:vir, partsParFoyer:parts, prorata:prorata,
+           totGeneral:totGeneral, totApero:totApero, totCible:totCible, absences:nbAbsents>0 };
 }
 
 /* ------------------------- Serveur ------------------------------------- */
@@ -287,6 +361,27 @@ function commitMenu(slot, el) {
   var actuel = (DATA.meals[slot]||{}).menu||'';
   if (el.value!==actuel) op({t:'setMeal',slot:slot,patch:{menu:el.value}});
 }
+function absentsDe(slot){
+  var m = DATA.meals[slot];
+  return (m && Array.isArray(m.absents)) ? m.absents : [];
+}
+function absentAdd(slot, sel){
+  var v = sel.value;
+  if (!v) return;
+  var cur = absentsDe(slot).slice();
+  if (v.indexOf('f:')===0) {
+    var f = listeFoyers()[parseInt(v.slice(2),10)];
+    DATA.participants.forEach(function(p){ if (p.foyer===f && cur.indexOf(p.id)===-1) cur.push(p.id); });
+  } else if (cur.indexOf(v)===-1) cur.push(v);
+  op({t:'setMeal', slot:slot, patch:{absents:cur}});
+}
+function absentDel(slot, pid){
+  op({t:'setMeal', slot:slot, patch:{absents: absentsDe(slot).filter(function(x){return x!==pid;})}});
+}
+function majZonePour(sel) {
+  var z = document.getElementById('dep-pour');
+  if (z) z.style.display = sel.value==='__menages' ? 'flex' : 'none';
+}
 function ajouterDepense() {
   var label=document.getElementById('dep-label').value.trim();
   var m=parseMontant(document.getElementById('dep-montant').value);
@@ -296,9 +391,20 @@ function ajouterDepense() {
   if(!label){err.textContent='Il manque un libellé.';return;}
   if(m===null||m<=0){err.textContent='Montant invalide.';return;}
   if(!payeur){err.textContent='Qui a payé ?';return;}
+  var pour = null;
+  if (lien==='__menages') {
+    pour = [];
+    listeFoyers().forEach(function(f, i){
+      var cb = document.getElementById('dep-pour-'+i);
+      if (cb && cb.checked) pour.push(f);
+    });
+    if (!pour.length) { err.textContent='Coche le ou les ménages concernés.'; return; }
+    lien = 'menages';
+  }
   err.textContent='';
   NOTE_DEP='';
   var exp={label:label,amount:m,payer:payeur,link:lien};
+  if (pour) exp.pour = pour;
   if(!FICHIER_DEP){ op({t:'addExpense',exp:exp}); return; }
   var b=document.getElementById('btn-dep');
   if(b){ b.disabled=true; b.textContent='Envoi de la facture…'; }
@@ -601,6 +707,7 @@ function changerPass() {
 
 var ICONE_PARTAGE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.7l6.8-3.9M8.6 13.3l6.8 3.9"/></svg>';
 var ICONE_DATES = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></svg>';
+var ICONE_APERO = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 3h14l-7 9z"/><path d="M12 12v7M8 21h8"/></svg>';
 
 function titreApp(){ return (DATA.config && DATA.config.titre) || 'Séjour'; }
 function nomCuisine(m) {
@@ -618,6 +725,8 @@ function texteRepas() {
     j.slots.forEach(function(s){
       var m = DATA.meals[j.id+'-'+s]||{};
       l.push(SLOT_LABEL[s]+' : '+nomCuisine(m)+(m.menu?' · '+m.menu:''));
+      var abs = (m.absents||[]).map(function(id){ var p=parId(id); return p?p.nom:null; }).filter(Boolean);
+      if (abs.length) l.push('Absents : '+abs.join(', '));
     });
   });
   return l.join('\n');
@@ -628,8 +737,7 @@ function texteDepenses() {
   if (!DATA.expenses.length) { l.push(''); l.push('Aucune dépense pour l\'instant.'); return l.join('\n'); }
   l.push('');
   DATA.expenses.slice().sort(function(a,b){return a.ts-b.ts;}).forEach(function(e){
-    var cat = CATS.find(function(c){return c.id===e.link;});
-    l.push(e.label+' ('+e.payer+' · '+(cat?cat.label:slotNom(e.link))+') : '+eur(e.amount));
+    l.push(e.label+' ('+e.payer+' · '+lienLabel(e)+') : '+eur(e.amount));
   });
   var aFaire = (DATA.liste||[]).filter(function(x){return !x.fait;});
   if (aFaire.length) {
@@ -642,8 +750,10 @@ function texteComptes() {
   var c = comptes();
   var l = ['Comptes · '+titreApp(),
            'Dépenses totales : '+eur(c.total),
-           'Coût par part : '+eur(c.coutPart)+' ('+frNum(c.totalParts)+' parts'+(c.prorata?', au prorata des nuits':'')+')',
-           '', 'Soldes par ménage :'];
+           'Coût par part (communes) : '+eur(c.coutPart)+' ('+frNum(c.totalParts)+' parts'+(c.prorata?', au prorata des nuits':'')+')'];
+  if (c.totApero) l.push('Apéro/alcool : '+eur(c.totApero)+', entre les personnes concernées');
+  if (c.totCible) l.push('Dépenses ciblées : '+eur(c.totCible)+', aux ménages concernés');
+  l.push(''); l.push('Soldes par ménage :');
   c.lignes.forEach(function(x){
     l.push(x.foyer+' ('+frNum(x.parts)+' parts) : '+(x.solde>=0?'+':'')+eur(x.solde));
   });
@@ -789,7 +899,7 @@ function renderRepas() {
   if (!JOURS.length) return '<p class="aide">Règle d\'abord les dates du séjour dans l\'onglet Réglages : le planning des repas se créera tout seul.</p>';
   var eqs = equipes();
   var cuisiniers = DATA.participants.filter(function(p){ return (parseFloat(p.poids)||0)>=1; });
-  var h = '<p class="aide">Un ménage ou une petite équipe de volontaires prend en général le déjeuner et le dîner du même jour.</p>';
+  var h = '<p class="aide">Un ménage ou une petite équipe de volontaires prend en général le déjeuner et le dîner du même jour. Si un ménage ou quelques personnes sautent un repas, signale-les en « Absents » sur ce repas : leur part de ce repas et des courses est défalquée automatiquement dans les comptes.</p>';
   JOURS.forEach(function(j){
     h += '<section class="carte"><h2 class="jour-titre">'+j.label+'</h2>';
     j.slots.forEach(function(s){
@@ -825,6 +935,21 @@ function renderRepas() {
         h += '</div>';
       }
       h += '<input class="input-menu" value="'+esc(m.menu)+'" placeholder="Menu (facultatif)" onblur="commitMenu(\''+id+'\',this)">';
+      var abs = absentsDe(id).map(parId).filter(Boolean);
+      h += '<div class="chips" style="margin-top:6px">';
+      abs.forEach(function(p){
+        h += '<span class="chip">'+esc(p.nom)+'<button onclick="absentDel(\''+id+'\',\''+p.id+'\')" aria-label="'+esc(p.nom)+' finalement présent à ce repas">×</button></span>';
+      });
+      h += '<select class="select-ajout" onchange="absentAdd(\''+id+'\',this)" aria-label="Signaler un absent à ce repas">';
+      h += '<option value="">'+(abs.length?'+ Absent':'Absents ?')+'</option>';
+      h += '<optgroup label="Ménage entier">';
+      listeFoyers().forEach(function(f,fi){ h+='<option value="f:'+fi+'">'+esc(f)+'</option>'; });
+      h += '</optgroup><optgroup label="Personnes">';
+      DATA.participants.forEach(function(p){
+        if (absentsDe(id).indexOf(p.id)!==-1) return;
+        h += '<option value="'+p.id+'">'+esc(p.nom)+'</option>';
+      });
+      h += '</optgroup></select></div>';
       h += '</div>';
     });
     h += '</section>';
@@ -861,10 +986,16 @@ function renderDepenses() {
   h += '<select id="dep-payeur" class="flex14"><option value="">Payé par…</option>';
   foyers.forEach(function(f){ h+='<option value="'+esc(f)+'">'+esc(f)+'</option>'; });
   h += '</select></div>';
-  h += '<select id="dep-lien">';
+  h += '<select id="dep-lien" onchange="majZonePour(this)">';
   CATS.forEach(function(c){ h+='<option value="'+c.id+'">'+c.label+'</option>'; });
+  h += '<option value="__menages">Pour certains ménages seulement…</option>';
   slots.forEach(function(s){ h+='<option value="'+s+'">'+slotNom(s)+'</option>'; });
   h += '</select>';
+  h += '<div id="dep-pour" class="chips" style="display:none">';
+  foyers.forEach(function(f, i){
+    h += '<label class="chip" style="cursor:pointer;gap:6px;padding:5px 11px"><input type="checkbox" id="dep-pour-'+i+'" style="width:18px;height:18px">'+esc(f)+'</label>';
+  });
+  h += '<span class="dep-meta" style="flex-basis:100%">La dépense sera partagée entre les ménages cochés (au prorata de leurs parts), pas entre tous.</span></div>';
   h += '<input type="file" id="dep-fichier" accept="image/*,application/pdf" style="display:none" onchange="choisirFacture(this)">';
   h += '<div id="dep-pj-zone">'+htmlZonePj()+'</div>';
   h += '<p id="dep-erreur" class="erreur"></p>';
@@ -875,9 +1006,8 @@ function renderDepenses() {
   var liste = DATA.expenses.slice().sort(function(a,b){return b.ts-a.ts;});
   if (!liste.length) h += '<p class="aide">Aucune dépense pour l\'instant. La première course lancera les comptes.</p>';
   liste.forEach(function(e){
-    var cat = CATS.find(function(c){return c.id===e.link;});
     h += '<div class="depense"><div style="flex:1;min-width:0"><div class="dep-label">'+esc(e.label)+'</div>';
-    h += '<div class="dep-meta">'+esc(e.payer)+' · '+(cat?cat.label:slotNom(e.link));
+    h += '<div class="dep-meta">'+esc(e.payer)+' · '+esc(lienLabel(e));
     if (e.pj) h += ' · <a class="dep-pj" href="https://drive.google.com/file/d/'+esc(e.pj)+'/view" target="_blank" rel="noopener">Facture</a>';
     h += '</div></div>';
     h += '<div class="chiffre" style="margin-left:8px">'+eur(e.amount)+'</div>';
@@ -891,8 +1021,13 @@ function renderComptes() {
   var c = comptes();
   var h = '<section class="carte"><div class="resume">';
   h += '<div><div class="resume-label">Dépenses totales</div><div class="chiffre" style="font-size:26px">'+eur(c.total)+'</div></div>';
-  h += '<div style="text-align:right"><div class="resume-label">Coût par part</div><div class="chiffre" style="font-size:26px">'+eur(c.coutPart)+'</div></div>';
-  h += '</div><div class="dep-meta">'+frNum(c.totalParts)+' parts au total'+(c.prorata?' · au prorata des nuits de présence (dates dans l\'onglet Famille)':'')+' · la pondération de chacun se règle dans l\'onglet Famille</div></section>';
+  h += '<div style="text-align:right"><div class="resume-label">Coût par part'+(c.totApero||c.totCible?' (communes)':'')+'</div><div class="chiffre" style="font-size:26px">'+eur(c.coutPart)+'</div></div>';
+  h += '</div><div class="dep-meta">'+frNum(c.totalParts)+' parts au total'
+    +(c.prorata?' · au prorata des nuits de présence':'')
+    +(c.totApero?' · apéro/alcool : '+eur(c.totApero)+', réparti entre les personnes marquées d\'un verre dans Famille':'')
+    +(c.totCible?' · dépenses ciblées : '+eur(c.totCible)+', à la charge des seuls ménages concernés':'')
+    +(c.absences?' · les absences signalées sur les repas sont défalquées':'')
+    +' · pondérations et présences dans l\'onglet Famille</div></section>';
   h += '<section class="carte"><h2 class="carte-titre">Soldes par ménage</h2>';
   c.lignes.forEach(function(l){
     h += '<div class="ligne-foyer"><div style="flex:1"><div class="dep-label">'+esc(l.foyer)+'</div>';
@@ -970,7 +1105,7 @@ function renderFamille() {
   var foyers = listeFoyers();
   var c = comptes();
   var proj = !!(DATA.config && DATA.config.prorata);
-  var h = '<p class="aide">Chaque personne est rattachée à un ménage (c\'est le ménage qui paie et qui est remboursé) et pèse 1 part (adulte, 10 ans et plus), ½ part (moins de 10 ans) ou 0 part (bébé, invité). Tout est modifiable au fil de l\'eau, les comptes suivent.</p>';
+  var h = '<p class="aide">Chaque personne est rattachée à un ménage (c\'est le ménage qui paie et qui est remboursé) et pèse 1 part (adulte, 10 ans et plus), ½ part (moins de 10 ans) ou 0 part (bébé, invité). L\'icône verre marque qui est concerné par les dépenses « Apéro / alcool » : décoche les enfants et ceux qui ne boivent pas, ces dépenses ne seront réparties qu\'entre les personnes cochées. Tout est modifiable au fil de l\'eau, les comptes suivent.</p>';
   h += '<section class="carte"><h2 class="carte-titre">Ajouter quelqu\'un</h2>';
   h += '<input id="fam-nom" placeholder="Prénom">';
   h += '<div class="ligne-h"><select id="fam-foyer" class="flex14" onchange="toggleNouveauFoyer(this)"><option value="">Ménage…</option>';
@@ -1039,6 +1174,7 @@ function renderFamille() {
         h+='<option value="'+o[0]+'"'+(String(p.poids)===o[0]?' selected':'')+'>'+o[1]+'</option>';
       });
       h += '</select>';
+      h += '<button class="btn-discret'+(aperoDe(p)?' actif':'')+'" style="width:30px;height:34px" onclick="majParticipant(\''+p.id+'\',\'apero\','+(aperoDe(p)?0:1)+')" aria-label="'+esc(p.nom)+(aperoDe(p)?' : ne plus compter dans les dépenses apéro/alcool':' : compter dans les dépenses apéro/alcool')+'">'+ICONE_APERO+'</button>';
       h += btnSuppr('par-'+p.id, "supprParticipant('"+p.id+"')", 'Retirer '+p.nom);
       h += '</div>';
       if (JOURS.length) {

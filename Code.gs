@@ -234,6 +234,10 @@ function appliquer_(d, op) {
       if (op.patch.hasOwnProperty('team')) m.team = op.patch.team;
       if (op.patch.hasOwnProperty('duo')) m.duo = op.patch.duo;
       if (op.patch.hasOwnProperty('menu')) m.menu = op.patch.menu;
+      if (op.patch.hasOwnProperty('absents')) {
+        m.absents = Array.isArray(op.patch.absents)
+          ? op.patch.absents.slice(0, 100).map(String) : [];
+      }
       d.meals[op.slot] = m;
       break;
     }
@@ -247,6 +251,9 @@ function appliquer_(d, op) {
         link: String(op.exp.link || 'autre')
       };
       if (op.exp.pj) exp.pj = String(op.exp.pj).slice(0, 80);
+      if (Array.isArray(op.exp.pour) && op.exp.pour.length) {
+        exp.pour = op.exp.pour.slice(0, 12).map(function (f) { return String(f).slice(0, 40); });
+      }
       d.expenses.push(exp);
       break;
     }
@@ -262,6 +269,7 @@ function appliquer_(d, op) {
         nom: String(op.nom || '').slice(0, 40),
         foyer: foyer,
         poids: parseFloat(op.poids) || 0,
+        apero: op.hasOwnProperty('apero') ? (op.apero ? 1 : 0) : ((parseFloat(op.poids) || 0) >= 1 ? 1 : 0),
         arrivee: dateSure_(op.arrivee, ''),
         depart: dateSure_(op.depart, '')
       });
@@ -281,6 +289,7 @@ function appliquer_(d, op) {
             d.participants[i].foyer = f;
             if (d.foyers.indexOf(f) === -1) d.foyers.push(f);
           } else if (op.champ === 'nom') d.participants[i].nom = String(op.valeur).slice(0, 40);
+          else if (op.champ === 'apero') d.participants[i].apero = op.valeur && op.valeur !== '0' ? 1 : 0;
           else if (op.champ === 'arrivee') d.participants[i].arrivee = dateSure_(op.valeur, '');
           else if (op.champ === 'depart') d.participants[i].depart = dateSure_(op.valeur, '');
         }
@@ -395,7 +404,10 @@ function appliquer_(d, op) {
       d.foyers = d.foyers.map(function (f) { return f === de ? vers : f; })
         .filter(function (f, i, a) { return a.indexOf(f) === i; });
       d.participants.forEach(function (p) { if (p.foyer === de) p.foyer = vers; });
-      d.expenses.forEach(function (e) { if (e.payer === de) e.payer = vers; });
+      d.expenses.forEach(function (e) {
+        if (e.payer === de) e.payer = vers;
+        if (Array.isArray(e.pour)) e.pour = e.pour.map(function (f) { return f === de ? vers : f; });
+      });
       Object.keys(d.meals).forEach(function (k) { if (d.meals[k].team === de) d.meals[k].team = vers; });
       break;
     }
@@ -464,6 +476,10 @@ function nomChambre_(d, roomId) {
 function decrireOp_(d, op) {
   switch (op.t) {
     case 'setMeal':
+      if (op.patch && op.patch.hasOwnProperty('absents')) {
+        var abs = (op.patch.absents || []).map(function (id) { return nomPar_(d, id); }).filter(Boolean);
+        return 'Absents du ' + slotLbl_(op.slot) + ' : ' + (abs.length ? abs.join(', ') : 'plus personne');
+      }
       if (op.patch && op.patch.hasOwnProperty('menu')) {
         var menu = String(op.patch.menu || '').slice(0, 80);
         return 'Menu du ' + slotLbl_(op.slot) + ' : ' + (menu || '(effacé)');
@@ -479,6 +495,7 @@ function decrireOp_(d, op) {
     case 'addExpense':
       return 'Dépense ajoutée : ' + String(op.exp && op.exp.label || '').slice(0, 80) +
         ', ' + (parseFloat(op.exp && op.exp.amount) || 0) + ' € (' + String(op.exp && op.exp.payer || '?') + ')' +
+        (op.exp && Array.isArray(op.exp.pour) && op.exp.pour.length ? ', pour ' + op.exp.pour.join(' + ') : '') +
         (op.exp && op.exp.pj ? ', avec facture' : '');
     case 'delExpense': {
       var e = null;
@@ -490,7 +507,7 @@ function decrireOp_(d, op) {
     case 'delParticipant':
       return 'Participant retiré : ' + (nomPar_(d, op.id) || op.id);
     case 'setParticipant': {
-      var champs = { poids: 'parts', foyer: 'ménage', nom: 'nom', arrivee: 'arrivée', depart: 'départ' };
+      var champs = { poids: 'parts', foyer: 'ménage', nom: 'nom', apero: 'apéro/alcool', arrivee: 'arrivée', depart: 'départ' };
       var val = (op.champ === 'arrivee' || op.champ === 'depart') ? (jourFr_(op.valeur) || 'tout le séjour') : String(op.valeur).slice(0, 40);
       return 'Fiche de ' + (nomPar_(d, op.id) || op.id) + ' : ' + (champs[op.champ] || op.champ) + ' → ' + val;
     }
