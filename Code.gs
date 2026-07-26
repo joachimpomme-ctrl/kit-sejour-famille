@@ -12,7 +12,7 @@ var ALERTE_PROP = 'SEJOUR_ALERTES';
 var CATS_ALERTES_ = ['repas', 'depenses', 'famille', 'chambres', 'wifi', 'courses', 'reglages'];
 var CAT_OP_ = {
   setMeal: 'repas',
-  addExpense: 'depenses', delExpense: 'depenses',
+  addExpense: 'depenses', delExpense: 'depenses', setExpense: 'depenses',
   addParticipant: 'famille', delParticipant: 'famille', setParticipant: 'famille',
   setPresence: 'famille',
   assignRoom: 'chambres',
@@ -261,6 +261,16 @@ function appliquer_(d, op) {
       d.expenses = d.expenses.filter(function (e) { return e.id !== op.id; });
       break;
     }
+    case 'setExpense': {
+      d.expenses.forEach(function (e) {
+        if (e.id !== op.id) return;
+        if (op.hasOwnProperty('link')) e.link = String(op.link || 'autre');
+        if (Array.isArray(op.pour) && op.pour.length) {
+          e.pour = op.pour.slice(0, 12).map(function (f) { return String(f).slice(0, 40); });
+        } else if (op.hasOwnProperty('pour')) delete e.pour;
+      });
+      break;
+    }
     case 'addParticipant': {
       var foyer = String(op.foyer || '').slice(0, 40);
       if (foyer && d.foyers.indexOf(foyer) === -1) d.foyers.push(foyer);
@@ -501,6 +511,13 @@ function decrireOp_(d, op) {
       var e = null;
       d.expenses.forEach(function (x) { if (x.id === op.id) e = x; });
       return e ? 'Dépense supprimée : ' + e.label + ', ' + e.amount + ' € (' + e.payer + ')' : 'Dépense supprimée';
+    }
+    case 'setExpense': {
+      var e2 = null;
+      d.expenses.forEach(function (x) { if (x.id === op.id) e2 = x; });
+      var vers2 = Array.isArray(op.pour) && op.pour.length ? 'pour ' + op.pour.join(' + ')
+        : ({ courses: 'courses communes', apero: 'apéro/alcool', autre: 'autre' })[op.link] || slotLbl_(op.link);
+      return 'Dépense réaffectée : ' + (e2 ? e2.label : op.id) + ' → ' + vers2;
     }
     case 'addParticipant':
       return 'Participant ajouté : ' + String(op.nom || '').slice(0, 40) + ' (' + String(op.foyer || '').slice(0, 40) + ')';

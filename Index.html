@@ -54,6 +54,7 @@ input:focus, select:focus, button:focus-visible { outline:2px solid #1E3350; out
 .pj-nom { flex:1; font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .note-pj { font-size:13px; color:#B0752C; font-weight:600; }
 .dep-pj { color:#B0752C; font-weight:700; text-decoration:none; display:inline-block; padding:2px 0; }
+.btn-lien { border:none; background:none; padding:2px 0; font-family:'Public Sans',system-ui,sans-serif; font-size:12.5px; color:#5B6472; text-decoration:underline dotted; cursor:pointer; }
 .ligne-foyer { display:flex; align-items:center; gap:8px; border-top:1px solid #F0EDE4; padding-top:8px; }
 .select-compact { font-size:14px; padding:8px 24px 8px 8px; border-radius:8px; width:auto; }
 .presence { display:flex; align-items:center; gap:6px; padding:0 0 8px 0; }
@@ -114,6 +115,7 @@ var PANNEAU = false;   // panneau admin déplié
 var LOGIN_UI = false;  // formulaire de connexion admin affiché (?admin=1)
 var CATS_ALERTES = [['repas','Repas'],['depenses','Dépenses'],['famille','Famille'],['chambres','Chambres'],['wifi','Wifi'],['courses','Pense-bête de courses'],['reglages','Réglages']];
 var FICHIER_DEP = null; // File choisi pour la facture (photo/PDF), avant envoi
+var EDIT_DEP = null;  // id de la dépense dont on réaffecte la catégorie
 var NOTE_DEP = '';    // message informatif sous le formulaire de dépense
 var MAX_PJ = 5 * 1024 * 1024; // 5 Mo pour un fichier envoyé tel quel (PDF…)
 var QR_OUVERT = null; // id du bâtiment dont le QR wifi est affiché
@@ -488,6 +490,27 @@ function toucherSuppr(cle, action) {
   render();
 }
 function supprDepense(id){ toucherSuppr('dep-'+id, function(){ op({t:'delExpense',id:id}); }); }
+function editerDep(id){ EDIT_DEP = EDIT_DEP===id ? null : id; render(); }
+function majZonePourEdit(sel){
+  var z = document.getElementById('redep-pour');
+  if (z) z.style.display = sel.value==='__menages' ? 'flex' : 'none';
+}
+function validerReaffect(id){
+  var lien = document.getElementById('redep-lien').value;
+  var err = document.getElementById('redep-err');
+  var o = {t:'setExpense', id:id};
+  if (lien==='__menages') {
+    var pour = [];
+    listeFoyers().forEach(function(f, i){
+      var cb = document.getElementById('redep-pour-'+i);
+      if (cb && cb.checked) pour.push(f);
+    });
+    if (!pour.length) { if (err) err.textContent='Coche le ou les ménages concernés.'; return; }
+    o.link = 'menages'; o.pour = pour;
+  } else { o.link = lien; o.pour = null; }
+  EDIT_DEP = null;
+  op(o);
+}
 function ajouterCourse() {
   var el = document.getElementById('pb-txt');
   var t = el ? el.value.trim() : '';
@@ -1019,12 +1042,33 @@ function renderDepenses() {
   if (!liste.length) h += '<p class="aide">Aucune dépense pour l\'instant. La première course lancera les comptes.</p>';
   liste.forEach(function(e){
     h += '<div class="depense"><div style="flex:1;min-width:0"><div class="dep-label">'+esc(e.label)+'</div>';
-    h += '<div class="dep-meta">'+esc(e.payer)+' · '+esc(lienLabel(e));
+    h += '<div class="dep-meta">'+esc(e.payer)+' · <button class="btn-lien" onclick="editerDep(\''+e.id+'\')" aria-label="Réaffecter la dépense '+esc(e.label)+'">'+esc(lienLabel(e))+'</button>';
     if (e.pj) h += ' · <a class="dep-pj" href="https://drive.google.com/file/d/'+esc(e.pj)+'/view" target="_blank" rel="noopener">Facture</a>';
     h += '</div></div>';
     h += '<div class="chiffre" style="margin-left:8px">'+eur(e.amount)+'</div>';
     h += btnSuppr('dep-'+e.id, "supprDepense('"+e.id+"')", 'Supprimer '+e.label);
     h += '</div>';
+    if (EDIT_DEP===e.id) {
+      var lienCourant = (e.pour && e.pour.length) ? '__menages' : e.link;
+      h += '<section class="carte alerte"><div class="dep-meta">Réaffecter « '+esc(e.label)+' » :</div>';
+      h += '<select id="redep-lien" onchange="majZonePourEdit(this)">';
+      CATS.forEach(function(cc){ h+='<option value="'+cc.id+'"'+(lienCourant===cc.id?' selected':'')+'>'+cc.label+'</option>'; });
+      h += '<option value="__menages"'+(lienCourant==='__menages'?' selected':'')+'>Pour certains ménages seulement…</option>';
+      slots.forEach(function(s){ h+='<option value="'+s+'"'+(lienCourant===s?' selected':'')+'>'+slotNom(s)+'</option>'; });
+      if (lienCourant!=='__menages' && !CATS.some(function(cc){return cc.id===lienCourant;}) && slots.indexOf(lienCourant)===-1) {
+        h += '<option value="'+esc(lienCourant)+'" selected>'+esc(slotNom(lienCourant))+'</option>';
+      }
+      h += '</select>';
+      h += '<div id="redep-pour" class="chips" style="display:'+(e.pour&&e.pour.length?'flex':'none')+'">';
+      foyers.forEach(function(f, i){
+        var coche = e.pour && e.pour.indexOf(f)!==-1;
+        h += '<label class="chip" style="cursor:pointer;gap:6px;padding:5px 11px"><input type="checkbox" id="redep-pour-'+i+'"'+(coche?' checked':'')+' style="width:18px;height:18px">'+esc(f)+'</label>';
+      });
+      h += '</div><p id="redep-err" class="erreur"></p>';
+      h += '<div class="ligne-h"><button class="btn flex1" onclick="validerReaffect(\''+e.id+'\')">Valider</button>';
+      h += '<button class="btn-x" onclick="EDIT_DEP=null;render()" aria-label="Annuler la réaffectation">Annuler</button></div>';
+      h += '</section>';
+    }
   });
   return h;
 }

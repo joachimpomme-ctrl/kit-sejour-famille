@@ -132,7 +132,9 @@ défaut `vacances` — **changez-le tout de suite** dans le panneau ⚙.
 ## Limites assumées
 
 - Quiconque a le lien peut tout modifier (public familial).
-- Pas d'édition d'une dépense : supprimer puis ressaisir.
+- Pas d'édition du libellé ou du montant d'une dépense : supprimer puis
+  ressaisir. L'affectation (catégorie, repas, ménages ciblés), elle, se
+  modifie en tapant dessus dans la liste.
 - Supprimer une dépense ne supprime pas sa facture du Drive (archive).
 - L'appli nécessite une connexion : pas de mode hors ligne.
 
