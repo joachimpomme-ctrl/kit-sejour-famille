@@ -298,6 +298,16 @@ function comptes() {
     }
   });
   var coutPart = totalParts>0 ? totGeneral/totalParts : 0;
+  /* Suivi budget : repas déjà passés à l'instant présent (déjeuner compté
+     après 14 h, dîner après 22 h), pour un coût par part et par repas. */
+  var maintenant = new Date();
+  var repasEcoules = 0;
+  slotsSejour.forEach(function(s){
+    var i2 = s.lastIndexOf('-');
+    var finRepas = new Date(s.slice(0,i2) + (s.slice(i2+1)==='dej' ? 'T14:00:00' : 'T22:00:00'));
+    if (maintenant > finRepas) repasEcoules++;
+  });
+  var coutPartRepas = (totalParts>0 && repasEcoules>0) ? (totGeneral+totApero)/totalParts/repasEcoules : 0;
   var lignes = Object.keys(paye).map(function(f){
     return { foyer:f, parts:parts[f]||0, paye:paye[f]||0, du:du[f]||0, solde:(paye[f]||0)-(du[f]||0) };
   });
@@ -311,7 +321,8 @@ function comptes() {
     if(deb[i].m<0.01)i++; if(cre[j].m<0.01)j++;
   }
   return { total:total, totalParts:totalParts, coutPart:coutPart, lignes:lignes, virements:vir, partsParFoyer:parts, prorata:prorata,
-           totGeneral:totGeneral, totApero:totApero, totCible:totCible, absences:nbAbsents>0 };
+           totGeneral:totGeneral, totApero:totApero, totCible:totCible, absences:nbAbsents>0,
+           repasEcoules:repasEcoules, repasTotal:slotsSejour.length, coutPartRepas:coutPartRepas };
 }
 
 /* ------------------------- Serveur ------------------------------------- */
@@ -751,6 +762,7 @@ function texteComptes() {
   var l = ['Comptes · '+titreApp(),
            'Dépenses totales : '+eur(c.total),
            'Coût par part (communes) : '+eur(c.coutPart)+' ('+frNum(c.totalParts)+' parts'+(c.prorata?', au prorata des nuits':'')+')'];
+  if (c.repasEcoules) l.push('Par part et par repas passé : '+eur(c.coutPartRepas)+' ('+c.repasEcoules+' repas sur '+c.repasTotal+')');
   if (c.totApero) l.push('Apéro/alcool : '+eur(c.totApero)+', entre les personnes concernées');
   if (c.totCible) l.push('Dépenses ciblées : '+eur(c.totCible)+', aux ménages concernés');
   l.push(''); l.push('Soldes par ménage :');
@@ -1022,7 +1034,14 @@ function renderComptes() {
   var h = '<section class="carte"><div class="resume">';
   h += '<div><div class="resume-label">Dépenses totales</div><div class="chiffre" style="font-size:26px">'+eur(c.total)+'</div></div>';
   h += '<div style="text-align:right"><div class="resume-label">Coût par part'+(c.totApero||c.totCible?' (communes)':'')+'</div><div class="chiffre" style="font-size:26px">'+eur(c.coutPart)+'</div></div>';
-  h += '</div><div class="dep-meta">'+frNum(c.totalParts)+' parts au total'
+  h += '</div>';
+  if (c.repasTotal) {
+    h += '<div class="resume" style="border-top:1px solid #F0EDE4;padding-top:10px">';
+    h += '<div><div class="resume-label">Par part et par repas passé</div><div class="chiffre" style="font-size:26px">'+(c.repasEcoules?eur(c.coutPartRepas):'—')+'</div></div>';
+    h += '<div style="text-align:right"><div class="resume-label">Repas passés</div><div class="chiffre" style="font-size:26px">'+c.repasEcoules+' / '+c.repasTotal+'</div></div></div>';
+    h += '<p class="aide" style="margin:0">Dépenses communes et apéro, divisées par les parts puis par les repas déjà passés. Compare ce chiffre à ton budget habituel par personne et par repas : s\'il grimpe, on dépense trop vite.</p>';
+  }
+  h += '<div class="dep-meta">'+frNum(c.totalParts)+' parts au total'
     +(c.prorata?' · au prorata des nuits de présence':'')
     +(c.totApero?' · apéro/alcool : '+eur(c.totApero)+', réparti entre les personnes marquées d\'un verre dans Famille':'')
     +(c.totCible?' · dépenses ciblées : '+eur(c.totCible)+', à la charge des seuls ménages concernés':'')
