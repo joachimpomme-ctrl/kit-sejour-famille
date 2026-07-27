@@ -25,7 +25,10 @@ h1 { font-family:'Bricolage Grotesque',sans-serif; font-weight:800; font-size:30
 .jour-titre { font-family:'Bricolage Grotesque',sans-serif; font-size:17px; font-weight:700; margin-bottom:4px; }
 .jour-tete { display:flex; justify-content:space-between; align-items:baseline; gap:8px; background:none; border:none; padding:0; width:100%; cursor:pointer; text-align:left; color:inherit; }
 .jour-tete .jour-titre { margin-bottom:0; }
-.chevron { color:#8A8F98; font-size:13px; flex-shrink:0; }
+.chevron { color:#5B6472; font-size:13px; flex-shrink:0; }
+.select-lien { border:none; background:none; background-image:none; -webkit-appearance:none; appearance:none;
+  color:#5B6472; font-size:12.5px; font-weight:600; padding:6px 0; width:auto; border-radius:0;
+  text-decoration:underline dotted; cursor:pointer; }
 .slot { padding:8px 0; border-top:1px solid #F0EDE4; }
 .slot-ligne { display:flex; align-items:center; gap:10px; }
 .slot-label { font-size:13px; font-weight:600; width:74px; flex-shrink:0; }
@@ -120,6 +123,9 @@ var CATS_ALERTES = [['repas','Repas'],['depenses','Dépenses'],['famille','Famil
 var FICHIER_DEP = null; // File choisi pour la facture (photo/PDF), avant envoi
 var EDIT_DEP = null;  // id de la dépense en cours de modification
 var AIDE_CPT = false; // explication des compteurs de l'onglet Comptes dépliée
+var AIDE_REPAS = false, AIDE_FAM = false; // aides longues dépliées
+var OUVERT_FOYER = {}; // cartes ménages dépliées/repliées (défaut : repliées)
+var VOIR_NOTE = true;  // bandeau « données communes » (3 premières ouvertures)
 var NOTE_DEP = '';    // message informatif sous le formulaire de dépense
 var MAX_PJ = 5 * 1024 * 1024; // 5 Mo pour un fichier envoyé tel quel (PDF…)
 var QR_OUVERT = null; // id du bâtiment dont le QR wifi est affiché
@@ -554,13 +560,24 @@ function ajouterParticipant() {
   err.textContent='';
   op({t:'addParticipant',nom:nom,foyer:foyer,poids:poids});
 }
-function allerTab(t){ TAB=t; NOTE_DEP=''; render(); window.scrollTo(0,0); }
-function togglePresence(){ PRESENCE_EDIT=!PRESENCE_EDIT; if(!PRESENCE_EDIT){ PRESENCE_DETAIL={}; PRESENCE_FOYERS={}; } render(); }
+function allerTab(t){
+  TAB=t; NOTE_DEP='';
+  try { localStorage.setItem('sejour_tab', t); } catch(e) {}
+  render(); window.scrollTo(0,0);
+}
+function togglePresence(){ PRESENCE_EDIT=!PRESENCE_EDIT; PRESENCE_DETAIL={}; PRESENCE_FOYERS={}; OUVERT_FOYER={}; render(); }
 function togglePresenceFoyer(i){
   var f = listeFoyers()[i];
   if (f===undefined) return;
   PRESENCE_FOYERS[f] = !PRESENCE_FOYERS[f];
   if (!PRESENCE_FOYERS[f]) delete PRESENCE_DETAIL[f];
+  else OUVERT_FOYER[f] = true;
+  render();
+}
+function toggleFoyerCarte(i, ouvert){
+  var f = listeFoyers()[i];
+  if (f===undefined) return;
+  OUVERT_FOYER[f] = !ouvert;
   render();
 }
 function toggleDetailPresence(i){
@@ -953,7 +970,8 @@ function renderRepas() {
   if (!JOURS.length) return '<p class="aide">Règle d\'abord les dates du séjour dans l\'onglet Réglages : le planning des repas se créera tout seul.</p>';
   var eqs = equipes();
   var cuisiniers = DATA.participants.filter(function(p){ return (parseFloat(p.poids)||0)>=1; });
-  var h = '<p class="aide">Un ménage ou une petite équipe de volontaires prend en général le déjeuner et le dîner du même jour. Si un ménage ou quelques personnes sautent un repas, signale-les en « Absents » sur ce repas : leur part de ce repas et des courses est défalquée automatiquement dans les comptes. Les jours passés sont repliés, tape sur un jour pour le déplier ou le replier.</p>';
+  var h = '<p class="aide"><button class="btn-lien" onclick="AIDE_REPAS=!AIDE_REPAS;render()">'+(AIDE_REPAS?'Masquer l\'aide':'Comment ça marche ?')+'</button></p>';
+  if (AIDE_REPAS) h += '<p class="aide">Un ménage ou une petite équipe de volontaires prend en général le déjeuner et le dîner du même jour. Si un ménage ou quelques personnes sautent un repas, signale-les en « Absents » sur ce repas : leur part de ce repas et des courses est défalquée automatiquement dans les comptes. Les jours passés sont repliés, tape sur un jour pour le déplier ou le replier.</p>';
   var maintenant = new Date();
   JOURS.forEach(function(j){
     var passe = j.slots.every(function(s){
@@ -1009,7 +1027,7 @@ function renderRepas() {
       abs.forEach(function(p){
         h += '<span class="chip">'+esc(p.nom)+'<button onclick="absentDel(\''+id+'\',\''+p.id+'\')" aria-label="'+esc(p.nom)+' finalement présent à ce repas">×</button></span>';
       });
-      h += '<select class="select-ajout" onchange="absentAdd(\''+id+'\',this)" aria-label="Signaler un absent à ce repas">';
+      h += '<select class="select-lien" onchange="absentAdd(\''+id+'\',this)" aria-label="Signaler un absent à ce repas">';
       h += '<option value="">'+(abs.length?'+ Absent':'Absents ?')+'</option>';
       h += '<optgroup label="Ménage entier">';
       listeFoyers().forEach(function(f,fi){ h+='<option value="f:'+fi+'">'+esc(f)+'</option>'; });
@@ -1208,7 +1226,8 @@ function renderFamille() {
   var foyers = listeFoyers();
   var c = comptes();
   var proj = !!(DATA.config && DATA.config.prorata);
-  var h = '<p class="aide">Chaque personne est rattachée à un ménage (c\'est le ménage qui paie et qui est remboursé) et pèse 1 part (adulte, 10 ans et plus), ½ part (moins de 10 ans) ou 0 part (bébé, invité). L\'icône verre marque qui est concerné par les dépenses « Apéro / alcool » : décoche les enfants et ceux qui ne boivent pas, ces dépenses ne seront réparties qu\'entre les personnes cochées. Tout est modifiable au fil de l\'eau, les comptes suivent.</p>';
+  var h = '<p class="aide"><button class="btn-lien" onclick="AIDE_FAM=!AIDE_FAM;render()">'+(AIDE_FAM?'Masquer l\'aide':'Comment ça marche ?')+'</button></p>';
+  if (AIDE_FAM) h += '<p class="aide">Chaque personne est rattachée à un ménage (c\'est le ménage qui paie et qui est remboursé) et pèse 1 part (adulte, 10 ans et plus), ½ part (moins de 10 ans) ou 0 part (bébé, invité). L\'icône verre marque qui est concerné par les dépenses « Apéro / alcool » : décoche les enfants et ceux qui ne boivent pas, ces dépenses ne seront réparties qu\'entre les personnes cochées. Les noms (ménages et prénoms) se modifient directement dans leur champ. Tape sur un ménage pour le déplier ou le replier.</p>';
   h += '<section class="carte"><h2 class="carte-titre">Ajouter quelqu\'un</h2>';
   h += '<input id="fam-nom" placeholder="Prénom">';
   h += '<div class="ligne-h"><select id="fam-foyer" class="flex14" onchange="toggleNouveauFoyer(this)"><option value="">Ménage…</option>';
@@ -1246,11 +1265,18 @@ function renderFamille() {
     if (!membres.length) return;
     var cfg = DATA.config||{};
     var edF = PRESENCE_EDIT || !!PRESENCE_FOYERS[f];
+    var ouvertF = OUVERT_FOYER.hasOwnProperty(f) ? OUVERT_FOYER[f] : edF;
     h += '<section class="carte"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px">';
     h += '<input class="carte-titre input-nu flex1" value="'+esc(f)+'" data-de="'+esc(f)+'" aria-label="Renommer le ménage '+esc(f)+'" onblur="commitFoyer(this)">';
     h += '<span class="dep-meta" style="flex-shrink:0">'+frNum(c.partsParFoyer[f]||0)+' parts</span>';
     if (JOURS.length) h += '<button class="btn-discret'+(edF?' actif':'')+'" style="width:34px;height:34px;flex-shrink:0" onclick="togglePresenceFoyer('+fi+')" aria-label="Régler les dates d\'arrivée et de départ du ménage '+esc(f)+'">'+ICONE_DATES+'</button>';
+    h += '<button class="btn-discret" style="width:30px;height:34px;flex-shrink:0;font-size:13px" onclick="toggleFoyerCarte('+fi+','+ouvertF+')" aria-expanded="'+ouvertF+'" aria-label="'+(ouvertF?'Replier':'Déplier')+' le ménage '+esc(f)+'">'+(ouvertF?'▾':'▸')+'</button>';
     h += '</div>';
+    if (!ouvertF) {
+      h += '<div class="dep-meta" style="margin-top:-4px">'+membres.map(function(p){ return esc(p.nom); }).join(', ')+'</div>';
+      h += '</section>';
+      return;
+    }
     if (JOURS.length && edF) {
       var bs = membres.map(bornesPresence);
       var aCom = bs.every(function(x){return x.a===bs[0].a;}) ? bs[0].a : null;
@@ -1366,7 +1392,7 @@ function render() {
   h += '<button class="btn-discret'+(PANNEAU||LOGIN_UI?' actif':'')+'" onclick="toucherAdmin()" aria-label="Administration">⋯</button>';
   h += '<button id="btn-partage" class="btn-refresh" onclick="partagerTab()" aria-label="Partager l\'onglet affiché">'+ICONE_PARTAGE+'</button>';
   h += '<button id="btn-sync" class="btn-refresh" onclick="charger()" aria-label="Actualiser">⟳</button></div></header>';
-  h += '<p class="note-partage">Données communes à tout le groupe : ce que tu saisis ici est visible et modifiable par tous.</p>';
+  if (VOIR_NOTE) h += '<p class="note-partage">Données communes à tout le groupe : ce que tu saisis ici est visible et modifiable par tous.</p>';
   h += '<main class="contenu">';
   if (LOGIN_UI && !ADMIN_CRED) {
     h += '<section class="carte alerte"><h2 class="carte-titre">Connexion admin</h2>';
@@ -1420,6 +1446,15 @@ document.addEventListener('visibilitychange', function(){
 try {
   var credStock = localStorage.getItem('sejour_admin_cred');
   if (credStock) ADMIN_CRED = JSON.parse(credStock);
+} catch(e) {}
+try {
+  var notesVues = parseInt(localStorage.getItem('sejour_note_vues')||'0',10)||0;
+  VOIR_NOTE = notesVues < 3;
+  localStorage.setItem('sejour_note_vues', String(notesVues+1));
+} catch(e) {}
+try {
+  var tabMem = localStorage.getItem('sejour_tab');
+  if (['repas','depenses','comptes','chambres','famille','reglages'].indexOf(tabMem)!==-1) TAB = tabMem;
 } catch(e) {}
 google.script.url.getLocation(function(loc){
   if (loc && loc.parameter && loc.parameter.admin==='1' && !ADMIN_CRED) {
