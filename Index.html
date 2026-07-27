@@ -23,6 +23,9 @@ h1 { font-family:'Bricolage Grotesque',sans-serif; font-weight:800; font-size:30
 .carte.alerte { border-color:#EBDFC6; background:#FBF7EE; }
 .carte-titre { font-family:'Bricolage Grotesque',sans-serif; font-size:16px; font-weight:700; }
 .jour-titre { font-family:'Bricolage Grotesque',sans-serif; font-size:17px; font-weight:700; margin-bottom:4px; }
+.jour-tete { display:flex; justify-content:space-between; align-items:baseline; gap:8px; background:none; border:none; padding:0; width:100%; cursor:pointer; text-align:left; color:inherit; }
+.jour-tete .jour-titre { margin-bottom:0; }
+.chevron { color:#8A8F98; font-size:13px; flex-shrink:0; }
 .slot { padding:8px 0; border-top:1px solid #F0EDE4; }
 .slot-ligne { display:flex; align-items:center; gap:10px; }
 .slot-label { font-size:13px; font-weight:600; width:74px; flex-shrink:0; }
@@ -119,6 +122,7 @@ var EDIT_DEP = null;  // id de la dépense dont on réaffecte la catégorie
 var NOTE_DEP = '';    // message informatif sous le formulaire de dépense
 var MAX_PJ = 5 * 1024 * 1024; // 5 Mo pour un fichier envoyé tel quel (PDF…)
 var QR_OUVERT = null; // id du bâtiment dont le QR wifi est affiché
+var OUVERT_JOUR = {}; // jours de repas dépliés/repliés à la main (défaut : passés repliés)
 var PRESENCE_EDIT = false; // sélecteurs de dates d'arrivée/départ dépliés (onglet Famille)
 var PRESENCE_DETAIL = {}; // ménages dont le détail par personne est ouvert (mode édition)
 var PRESENCE_FOYERS = {}; // ménages dont l'édition des dates est ouverte individuellement
@@ -369,6 +373,7 @@ function commitMenu(slot, el) {
   var actuel = (DATA.meals[slot]||{}).menu||'';
   if (el.value!==actuel) op({t:'setMeal',slot:slot,patch:{menu:el.value}});
 }
+function toggleJour(id, ouvert){ OUVERT_JOUR[id] = !ouvert; render(); }
 function absentsDe(slot){
   var m = DATA.meals[slot];
   return (m && Array.isArray(m.absents)) ? m.absents : [];
@@ -934,9 +939,24 @@ function renderRepas() {
   if (!JOURS.length) return '<p class="aide">Règle d\'abord les dates du séjour dans l\'onglet Réglages : le planning des repas se créera tout seul.</p>';
   var eqs = equipes();
   var cuisiniers = DATA.participants.filter(function(p){ return (parseFloat(p.poids)||0)>=1; });
-  var h = '<p class="aide">Un ménage ou une petite équipe de volontaires prend en général le déjeuner et le dîner du même jour. Si un ménage ou quelques personnes sautent un repas, signale-les en « Absents » sur ce repas : leur part de ce repas et des courses est défalquée automatiquement dans les comptes.</p>';
+  var h = '<p class="aide">Un ménage ou une petite équipe de volontaires prend en général le déjeuner et le dîner du même jour. Si un ménage ou quelques personnes sautent un repas, signale-les en « Absents » sur ce repas : leur part de ce repas et des courses est défalquée automatiquement dans les comptes. Les jours passés sont repliés, tape sur un jour pour le déplier ou le replier.</p>';
+  var maintenant = new Date();
   JOURS.forEach(function(j){
-    h += '<section class="carte"><h2 class="jour-titre">'+j.label+'</h2>';
+    var passe = j.slots.every(function(s){
+      return maintenant > new Date(j.id + (s==='dej' ? 'T14:00:00' : 'T22:00:00'));
+    });
+    var ouvert = OUVERT_JOUR.hasOwnProperty(j.id) ? OUVERT_JOUR[j.id] : !passe;
+    h += '<section class="carte">';
+    h += '<button class="jour-tete" onclick="toggleJour(\''+j.id+'\','+ouvert+')" aria-expanded="'+ouvert+'">';
+    h += '<h2 class="jour-titre">'+j.label+'</h2><span class="chevron">'+(ouvert?'▾ replier':'▸ déplier')+'</span></button>';
+    if (!ouvert) {
+      h += '<div class="dep-meta" style="margin-top:-4px">'+j.slots.map(function(s){
+        var m = DATA.meals[j.id+'-'+s]||{};
+        return esc(SLOT_LABEL[s]+' : '+nomCuisine(m));
+      }).join(' · ')+'</div>';
+      h += '</section>';
+      return;
+    }
     j.slots.forEach(function(s){
       var id=j.id+'-'+s, m=DATA.meals[id]||{team:'',duo:null,menu:''};
       var modeDuo = Array.isArray(m.duo);
