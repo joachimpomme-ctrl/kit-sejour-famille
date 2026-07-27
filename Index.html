@@ -118,7 +118,8 @@ var PANNEAU = false;   // panneau admin déplié
 var LOGIN_UI = false;  // formulaire de connexion admin affiché (?admin=1)
 var CATS_ALERTES = [['repas','Repas'],['depenses','Dépenses'],['famille','Famille'],['chambres','Chambres'],['wifi','Wifi'],['courses','Pense-bête de courses'],['reglages','Réglages']];
 var FICHIER_DEP = null; // File choisi pour la facture (photo/PDF), avant envoi
-var EDIT_DEP = null;  // id de la dépense dont on réaffecte la catégorie
+var EDIT_DEP = null;  // id de la dépense en cours de modification
+var AIDE_CPT = false; // explication des compteurs de l'onglet Comptes dépliée
 var NOTE_DEP = '';    // message informatif sous le formulaire de dépense
 var MAX_PJ = 5 * 1024 * 1024; // 5 Mo pour un fichier envoyé tel quel (PDF…)
 var QR_OUVERT = null; // id du bâtiment dont le QR wifi est affiché
@@ -176,10 +177,13 @@ function periodeCourte() {
   return numFr(a.getDate())+' '+MOIS_FR[a.getMonth()]+' → '+numFr(b.getDate())+' '+MOIS_FR[b.getMonth()];
 }
 function lienLabel(e) {
-  if (Array.isArray(e.pour) && e.pour.length) return 'pour '+e.pour.join(' + ');
-  if (e.link==='courses') return 'Repas & courses';
   var cat = CATS.find(function(c){return c.id===e.link;});
-  return cat ? cat.label : slotNom(e.link);
+  var base = e.link==='courses' ? 'Repas & courses'
+    : cat ? cat.label
+    : e.link==='menages' ? 'Autre'
+    : slotNom(e.link);
+  if (Array.isArray(e.pour) && e.pour.length) return base+' · pour '+e.pour.join(' + ');
+  return base;
 }
 function slotNom(id) {
   var i = String(id).lastIndexOf('-');
@@ -273,28 +277,33 @@ function comptes() {
      cochés), apéro (personnes concernées), repas (assiduité aux repas, les
      anciennes dépenses « courses » ou liées à un repas comptent ici),
      activités et autre (tout le monde, aux parts). */
-  var total = 0, tots = { repas:0, apero:0, activites:0, autre:0, cible:0 };
+  var total = 0, totCible = 0;
+  var tots = { repas:0, apero:0, activites:0, autre:0 };       // par catégorie, ciblées incluses
+  var nc = { repas:0, apero:0, activites:0, autre:0 };         // hors ciblées, pour les compteurs
   DATA.expenses.forEach(function(e){
     var m = e.amount||0;
     total += m;
     if (paye[e.payer]===undefined) { paye[e.payer]=0; du[e.payer]=0; }
     paye[e.payer] += m;
     var cible = Array.isArray(e.pour) ? e.pour.filter(function(f){ return parts.hasOwnProperty(f); }) : [];
-    var cat = cible.length ? 'cible'
-      : e.link==='apero' ? 'apero'
+    var cat = e.link==='apero' ? 'apero'
       : (e.link==='repas' || e.link==='courses' || /-(dej|din)$/.test(String(e.link))) ? 'repas'
       : e.link==='activites' ? 'activites'
       : 'autre';
     tots[cat] += m;
-    if (cat==='cible') {
+    if (cible.length) {
+      totCible += m;
       var pc = 0; cible.forEach(function(f){ pc += parts[f]||0; });
       if (pc > 0) cible.forEach(function(f){ du[f] += m*(parts[f]||0)/pc; });
       else cible.forEach(function(f){ du[f] += m/cible.length; });
     } else if (cat==='apero' && totalApero > 0) {
+      nc[cat] += m;
       Object.keys(aperoP).forEach(function(f){ du[f] += m*(aperoP[f]||0)/totalApero; });
     } else if (cat==='repas' && totalAss > 0) {
+      nc[cat] += m;
       Object.keys(assP).forEach(function(f){ du[f] += m*(assP[f]||0)/totalAss; });
     } else {
+      nc[cat] += m;
       if (totalParts > 0) Object.keys(parts).forEach(function(f){ du[f] += m*(parts[f]||0)/totalParts; });
     }
   });
@@ -307,8 +316,8 @@ function comptes() {
     var finRepas = new Date(s.slice(0,i2) + (s.slice(i2+1)==='dej' ? 'T14:00:00' : 'T22:00:00'));
     if (maintenant > finRepas) repasEcoules++;
   });
-  var coutPartRepas = (totalParts>0 && repasEcoules>0) ? (tots.repas+tots.apero)/totalParts/repasEcoules : 0;
-  var horsRepasPart = totalParts>0 ? (tots.activites+tots.autre)/totalParts : 0;
+  var coutPartRepas = (totalParts>0 && repasEcoules>0) ? (nc.repas+nc.apero)/totalParts/repasEcoules : 0;
+  var horsRepasPart = totalParts>0 ? (nc.activites+nc.autre)/totalParts : 0;
   var lignes = Object.keys(paye).map(function(f){
     return { foyer:f, parts:parts[f]||0, paye:paye[f]||0, du:du[f]||0, solde:(paye[f]||0)-(du[f]||0) };
   });
@@ -322,7 +331,7 @@ function comptes() {
     if(deb[i].m<0.01)i++; if(cre[j].m<0.01)j++;
   }
   return { total:total, totalParts:totalParts, lignes:lignes, virements:vir, partsParFoyer:parts, prorata:prorata,
-           tots:tots, absences:nbAbsents>0, horsRepasPart:horsRepasPart,
+           tots:tots, totCible:totCible, absences:nbAbsents>0, horsRepasPart:horsRepasPart,
            repasEcoules:repasEcoules, repasTotal:slotsSejour.length, coutPartRepas:coutPartRepas };
 }
 
@@ -391,9 +400,9 @@ function absentAdd(slot, sel){
 function absentDel(slot, pid){
   op({t:'setMeal', slot:slot, patch:{absents: absentsDe(slot).filter(function(x){return x!==pid;})}});
 }
-function majZonePour(sel) {
+function majZonePour(cb) {
   var z = document.getElementById('dep-pour');
-  if (z) z.style.display = sel.value==='__menages' ? 'flex' : 'none';
+  if (z) z.style.display = cb.checked ? 'flex' : 'none';
 }
 function ajouterDepense() {
   var label=document.getElementById('dep-label').value.trim();
@@ -405,14 +414,14 @@ function ajouterDepense() {
   if(m===null||m<=0){err.textContent='Montant invalide.';return;}
   if(!payeur){err.textContent='Qui a payé ?';return;}
   var pour = null;
-  if (lien==='__menages') {
+  var cbCible = document.getElementById('dep-cible');
+  if (cbCible && cbCible.checked) {
     pour = [];
     listeFoyers().forEach(function(f, i){
       var cb = document.getElementById('dep-pour-'+i);
       if (cb && cb.checked) pour.push(f);
     });
     if (!pour.length) { err.textContent='Coche le ou les ménages concernés.'; return; }
-    lien = 'menages';
   }
   err.textContent='';
   NOTE_DEP='';
@@ -491,23 +500,28 @@ function toucherSuppr(cle, action) {
 }
 function supprDepense(id){ toucherSuppr('dep-'+id, function(){ op({t:'delExpense',id:id}); }); }
 function editerDep(id){ EDIT_DEP = EDIT_DEP===id ? null : id; render(); }
-function majZonePourEdit(sel){
+function majZonePourEdit(cb){
   var z = document.getElementById('redep-pour');
-  if (z) z.style.display = sel.value==='__menages' ? 'flex' : 'none';
+  if (z) z.style.display = cb.checked ? 'flex' : 'none';
 }
 function validerReaffect(id){
   var lien = document.getElementById('redep-lien').value;
   var err = document.getElementById('redep-err');
-  var o = {t:'setExpense', id:id};
-  if (lien==='__menages') {
+  var o = {t:'setExpense', id:id, link:lien, pour:null};
+  var lb = document.getElementById('redep-label');
+  if (lb && lb.value.trim()) o.label = lb.value.trim();
+  var py = document.getElementById('redep-payeur');
+  if (py && py.value) o.payer = py.value;
+  var cbCible = document.getElementById('redep-cible');
+  if (cbCible && cbCible.checked) {
     var pour = [];
     listeFoyers().forEach(function(f, i){
       var cb = document.getElementById('redep-pour-'+i);
       if (cb && cb.checked) pour.push(f);
     });
     if (!pour.length) { if (err) err.textContent='Coche le ou les ménages concernés.'; return; }
-    o.link = 'menages'; o.pour = pour;
-  } else { o.link = lien; o.pour = null; }
+    o.pour = pour;
+  }
   EDIT_DEP = null;
   op(o);
 }
@@ -792,7 +806,7 @@ function texteComptes() {
   l.push('- Apéro / alcool : '+eur(c.tots.apero));
   l.push('- Activités : '+eur(c.tots.activites));
   l.push('- Autre : '+eur(c.tots.autre));
-  if (c.tots.cible) l.push('- D\'un ménage à l\'autre : '+eur(c.tots.cible));
+  if (c.totCible) l.push('Dont ciblé « pour certains ménages » : '+eur(c.totCible));
   l.push(''); l.push('Soldes par ménage :');
   c.lignes.forEach(function(x){
     l.push(x.foyer+' ('+frNum(x.parts)+' parts) : '+(x.solde>=0?'+':'')+eur(x.solde));
@@ -1040,15 +1054,15 @@ function renderDepenses() {
   h += '<select id="dep-payeur" class="flex14"><option value="">Payé par…</option>';
   foyers.forEach(function(f){ h+='<option value="'+esc(f)+'">'+esc(f)+'</option>'; });
   h += '</select></div>';
-  h += '<select id="dep-lien" onchange="majZonePour(this)">';
+  h += '<select id="dep-lien" aria-label="Catégorie de la dépense">';
   CATS.forEach(function(c){ h+='<option value="'+c.id+'">'+c.label+'</option>'; });
-  h += '<option value="__menages">Pour certains ménages seulement…</option>';
   h += '</select>';
+  h += '<label class="alerte-cat" style="border-top:none;padding:2px 0"><input type="checkbox" id="dep-cible" onchange="majZonePour(this)"><span style="font-weight:600;font-size:14px">Pour certains ménages seulement</span></label>';
   h += '<div id="dep-pour" class="chips" style="display:none">';
   foyers.forEach(function(f, i){
     h += '<label class="chip" style="cursor:pointer;gap:6px;padding:5px 11px"><input type="checkbox" id="dep-pour-'+i+'" style="width:18px;height:18px">'+esc(f)+'</label>';
   });
-  h += '<span class="dep-meta" style="flex-basis:100%">La dépense sera partagée entre les ménages cochés (au prorata de leurs parts), pas entre tous.</span></div>';
+  h += '<span class="dep-meta" style="flex-basis:100%">La dépense garde sa catégorie mais n\'est partagée qu\'entre les ménages cochés (au prorata de leurs parts).</span></div>';
   h += '<input type="file" id="dep-fichier" accept="image/*,application/pdf" style="display:none" onchange="choisirFacture(this)">';
   h += '<div id="dep-pj-zone">'+htmlZonePj()+'</div>';
   h += '<p id="dep-erreur" class="erreur"></p>';
@@ -1067,16 +1081,20 @@ function renderDepenses() {
     h += btnSuppr('dep-'+e.id, "supprDepense('"+e.id+"')", 'Supprimer '+e.label);
     h += '</div>';
     if (EDIT_DEP===e.id) {
-      var lienCourant = (e.pour && e.pour.length) ? '__menages' : e.link;
-      h += '<section class="carte alerte"><div class="dep-meta">Réaffecter « '+esc(e.label)+' » :</div>';
-      h += '<select id="redep-lien" onchange="majZonePourEdit(this)">';
-      CATS.forEach(function(cc){ h+='<option value="'+cc.id+'"'+(lienCourant===cc.id?' selected':'')+'>'+cc.label+'</option>'; });
-      h += '<option value="__menages"'+(lienCourant==='__menages'?' selected':'')+'>Pour certains ménages seulement…</option>';
-      if (lienCourant!=='__menages' && !CATS.some(function(cc){return cc.id===lienCourant;})) {
-        h += '<option value="'+esc(lienCourant)+'" selected>'+esc(lienLabel({link:lienCourant}))+'</option>';
-      }
+      var lienCourant = CATS.some(function(cc){return cc.id===e.link;}) ? e.link
+        : (e.link==='courses' || /-(dej|din)$/.test(String(e.link))) ? 'repas' : 'autre';
+      var estCible = !!(e.pour && e.pour.length);
+      h += '<section class="carte alerte"><div class="dep-meta">Modifier cette dépense ('+eur(e.amount)+', montant non modifiable — supprime et ressaisis si besoin) :</div>';
+      h += '<input id="redep-label" value="'+esc(e.label)+'" aria-label="Libellé de la dépense">';
+      h += '<select id="redep-payeur" aria-label="Payé par">';
+      foyers.forEach(function(f){ h+='<option value="'+esc(f)+'"'+(e.payer===f?' selected':'')+'>'+esc(f)+'</option>'; });
+      if (foyers.indexOf(e.payer)===-1) h += '<option value="'+esc(e.payer)+'" selected>'+esc(e.payer)+'</option>';
       h += '</select>';
-      h += '<div id="redep-pour" class="chips" style="display:'+(e.pour&&e.pour.length?'flex':'none')+'">';
+      h += '<select id="redep-lien" aria-label="Nouvelle catégorie">';
+      CATS.forEach(function(cc){ h+='<option value="'+cc.id+'"'+(lienCourant===cc.id?' selected':'')+'>'+cc.label+'</option>'; });
+      h += '</select>';
+      h += '<label class="alerte-cat" style="border-top:none;padding:2px 0"><input type="checkbox" id="redep-cible"'+(estCible?' checked':'')+' onchange="majZonePourEdit(this)"><span style="font-weight:600;font-size:14px">Pour certains ménages seulement</span></label>';
+      h += '<div id="redep-pour" class="chips" style="display:'+(estCible?'flex':'none')+'">';
       foyers.forEach(function(f, i){
         var coche = e.pour && e.pour.indexOf(f)!==-1;
         h += '<label class="chip" style="cursor:pointer;gap:6px;padding:5px 11px"><input type="checkbox" id="redep-pour-'+i+'"'+(coche?' checked':'')+' style="width:18px;height:18px">'+esc(f)+'</label>';
@@ -1100,18 +1118,18 @@ function renderComptes() {
     h += '<div class="resume" style="border-top:1px solid #F0EDE4;padding-top:10px">';
     h += '<div><div class="resume-label">Repas + apéro, par part et par repas passé</div><div class="chiffre" style="font-size:26px">'+(c.repasEcoules?eur(c.coutPartRepas):'—')+'</div></div>';
     h += '<div style="text-align:right"><div class="resume-label">Repas passés</div><div class="chiffre" style="font-size:26px">'+c.repasEcoules+' / '+c.repasTotal+'</div></div></div>';
-    h += '<p class="aide" style="margin:0">À gauche : la nourriture (repas & courses + apéro), divisée par les parts puis par les repas déjà passés — compare à ton budget habituel par personne et par repas. « Hors repas » : activités et autre, par part sur tout le séjour.</p>';
+    h += '<button class="btn-lien" style="align-self:flex-start" onclick="AIDE_CPT=!AIDE_CPT;render()">'+(AIDE_CPT?'Masquer l\'explication':'Comment lire ces chiffres ?')+'</button>';
+    if (AIDE_CPT) h += '<p class="aide" style="margin:0">À gauche : la nourriture (repas & courses + apéro), divisée par les parts puis par les repas déjà passés — compare à ton budget habituel par personne et par repas. « Hors repas » : activités et autre, par part sur tout le séjour. Les dépenses ciblées sur des ménages ne sont pas dans ces deux compteurs.</p>';
   }
   h += '<div class="dep-meta">'+frNum(c.totalParts)+' parts au total'
     +(c.prorata?' · au prorata des nuits de présence':'')
     +(c.absences?' · les absences signalées sur les repas sont défalquées':'')
     +' · pondérations et présences dans l\'onglet Famille</div></section>';
   h += '<section class="carte"><h2 class="carte-titre">Par catégorie</h2>';
-  [['repas','Repas & courses'],['apero','Apéro / alcool'],['activites','Activités'],['autre','Autre'],['cible','D\'un ménage à l\'autre']].forEach(function(k){
-    if (k[0]==='cible' && !c.tots.cible) return;
+  [['repas','Repas & courses'],['apero','Apéro / alcool'],['activites','Activités'],['autre','Autre']].forEach(function(k){
     h += '<div class="total-ligne" style="padding:2px 0;border-top:1px solid #F0EDE4"><span style="font-weight:600">'+k[1]+'</span><span class="chiffre">'+eur(c.tots[k[0]])+'</span></div>';
   });
-  h += '<p class="aide" style="margin:0">Apéro : réparti entre les personnes marquées d\'un verre dans Famille. D\'un ménage à l\'autre : à la charge des seuls ménages cochés.</p>';
+  h += '<p class="aide" style="margin:0">Apéro : réparti entre les personnes marquées d\'un verre dans Famille.'+(c.totCible?' '+eur(c.totCible)+' de ces montants sont ciblés « pour certains ménages » et à leur seule charge.':'')+'</p>';
   h += '</section>';
   h += '<section class="carte"><h2 class="carte-titre">Soldes par ménage</h2>';
   c.lignes.forEach(function(l){

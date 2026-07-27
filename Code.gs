@@ -264,6 +264,11 @@ function appliquer_(d, op) {
     case 'setExpense': {
       d.expenses.forEach(function (e) {
         if (e.id !== op.id) return;
+        if (op.hasOwnProperty('label')) {
+          var lb = String(op.label || '').slice(0, 120).trim();
+          if (lb) e.label = lb;
+        }
+        if (op.hasOwnProperty('payer') && op.payer) e.payer = String(op.payer).slice(0, 40);
         if (op.hasOwnProperty('link')) e.link = String(op.link || 'autre');
         if (Array.isArray(op.pour) && op.pour.length) {
           e.pour = op.pour.slice(0, 12).map(function (f) { return String(f).slice(0, 40); });
@@ -515,9 +520,11 @@ function decrireOp_(d, op) {
     case 'setExpense': {
       var e2 = null;
       d.expenses.forEach(function (x) { if (x.id === op.id) e2 = x; });
-      var vers2 = Array.isArray(op.pour) && op.pour.length ? 'pour ' + op.pour.join(' + ')
-        : ({ courses: 'courses communes', apero: 'apéro/alcool', autre: 'autre' })[op.link] || slotLbl_(op.link);
-      return 'Dépense réaffectée : ' + (e2 ? e2.label : op.id) + ' → ' + vers2;
+      var cat2 = ({ repas: 'repas & courses', courses: 'repas & courses', apero: 'apéro/alcool',
+                    activites: 'activités', autre: 'autre' })[op.link] || String(op.link || '');
+      return 'Dépense modifiée : ' + (e2 ? e2.label : op.id) + ' → ' + cat2 +
+        (Array.isArray(op.pour) && op.pour.length ? ', pour ' + op.pour.join(' + ') : '') +
+        (op.payer ? ', payée par ' + String(op.payer).slice(0, 40) : '');
     }
     case 'addParticipant':
       return 'Participant ajouté : ' + String(op.nom || '').slice(0, 40) + ' (' + String(op.foyer || '').slice(0, 40) + ')';
