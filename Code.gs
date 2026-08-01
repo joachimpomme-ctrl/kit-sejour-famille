@@ -248,6 +248,9 @@ function appliquer_(d, op) {
         }
         if (Object.keys(inv).length) m.inv = inv; else delete m.inv;
       }
+      if (op.patch.hasOwnProperty('off')) {
+        if (op.patch.off) m.off = 1; else delete m.off;
+      }
       d.meals[op.slot] = m;
       break;
     }
@@ -717,6 +720,11 @@ function decrireOp_(d, op) {
       if (op.patch && op.patch.hasOwnProperty('absents')) {
         var abs = (op.patch.absents || []).map(function (id) { return nomPar_(d, id); }).filter(Boolean);
         return 'Absents du ' + slotLbl_(op.slot) + ' : ' + (abs.length ? abs.join(', ') : 'plus personne');
+      }
+      if (op.patch && op.patch.hasOwnProperty('off')) {
+        return op.patch.off
+          ? 'Repas supprimé : ' + slotLbl_(op.slot) + ' (ne compte plus dans les comptes)'
+          : 'Repas rétabli : ' + slotLbl_(op.slot);
       }
       if (op.patch && op.patch.hasOwnProperty('inv')) {
         var invD = op.patch.inv || {};

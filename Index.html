@@ -262,7 +262,10 @@ function comptes() {
      repas ni, au prorata, pour les courses communes. */
   var jours = joursSejour();
   var slotsSejour = [];
-  jours.forEach(function(j){ j.slots.forEach(function(s){ slotsSejour.push(j.id+'-'+s); }); });
+  jours.forEach(function(j){ j.slots.forEach(function(s){
+    var sid = j.id+'-'+s;
+    if (!repasOff(sid)) slotsSejour.push(sid);
+  }); });
   function presentSlot(p, slotId) {
     var i = slotId.lastIndexOf('-'), day = slotId.slice(0,i), svc = slotId.slice(i+1);
     var b = bornesPresence(p);
@@ -435,6 +438,18 @@ function absentAdd(slot, sel){
 }
 function absentDel(slot, pid){
   op({t:'setMeal', slot:slot, patch:{absents: absentsDe(slot).filter(function(x){return x!==pid;})}});
+}
+/* Repas supprimé (restaurant, chacun de son côté…) : m.off = 1, le repas ne
+   compte plus du tout dans les comptes ; rétablissable à tout moment. */
+function repasOff(slotId){
+  var m = DATA.meals[slotId];
+  return !!(m && m.off);
+}
+function supprRepas(slot){
+  toucherSuppr('meal-'+slot, function(){ op({t:'setMeal', slot:slot, patch:{off:1}}); });
+}
+function retablirRepas(slot){
+  op({t:'setMeal', slot:slot, patch:{off:0}});
 }
 /* Invités : m.inv = { "<ménage>": nombre }, le ménage hôte prend leurs parts
    de ce repas à sa charge. */
@@ -915,6 +930,7 @@ function texteRepas() {
     l.push(j.label);
     j.slots.forEach(function(s){
       var m = DATA.meals[j.id+'-'+s]||{};
+      if (m.off) { l.push(SLOT_LABEL[s]+' : pas de repas commun'); return; }
       l.push(SLOT_LABEL[s]+' : '+nomCuisine(m)+(m.menu?' · '+m.menu:''));
       var abs = (m.absents||[]).map(function(id){ var p=parId(id); return p?p.nom:null; }).filter(Boolean);
       if (abs.length) l.push('Absents : '+abs.join(', '));
@@ -1055,6 +1071,7 @@ function feuillesExport() {
   JOURS.forEach(function(j){
     j.slots.forEach(function(s){
       var m = DATA.meals[j.id+'-'+s]||{};
+      if (m.off) { rl.push([j.label, SLOT_LABEL[s], 'pas de repas commun', '', '', '']); return; }
       var abs = (m.absents||[]).map(function(id){ var p=parId(id); return p?p.nom:null; }).filter(Boolean).join(', ');
       var inv = Object.keys(m.inv||{}).map(function(k){ return k+' +'+m.inv[k]; }).join(', ');
       rl.push([j.label, SLOT_LABEL[s], nomCuisine(m), m.menu||'', abs, inv]);
@@ -1261,7 +1278,7 @@ function renderRepas() {
   var eqs = equipes();
   var cuisiniers = DATA.participants.filter(function(p){ return (parseFloat(p.poids)||0)>=1; });
   var h = '<p class="aide"><button class="btn-lien" onclick="AIDE_REPAS=!AIDE_REPAS;render()">'+(AIDE_REPAS?'Masquer l\'aide':'Comment ça marche ?')+'</button></p>';
-  if (AIDE_REPAS) h += '<p class="aide">Un ménage ou une petite équipe de volontaires prend en général le déjeuner et le dîner du même jour. Si un ménage ou quelques personnes sautent un repas, signale-les en « Absents » sur ce repas : leur part de ce repas et des courses est défalquée automatiquement dans les comptes. À l\'inverse, « Invités ? » ajoute des amis de passage sur un repas : leurs parts sont à la charge du ménage qui invite. Les jours passés sont repliés, tape sur un jour pour le déplier ou le replier.</p>';
+  if (AIDE_REPAS) h += '<p class="aide">Un ménage ou une petite équipe de volontaires prend en général le déjeuner et le dîner du même jour. Si un ménage ou quelques personnes sautent un repas, signale-les en « Absents » sur ce repas : leur part de ce repas et des courses est défalquée automatiquement dans les comptes. À l\'inverse, « Invités ? » ajoute des amis de passage sur un repas : leurs parts sont à la charge du ménage qui invite. Le × d\'un repas le supprime complètement (restaurant, chacun de son côté…) : il ne compte plus du tout dans les comptes, et « Rétablir » le remet. Les jours passés sont repliés, tape sur un jour pour le déplier ou le replier.</p>';
   var maintenant = new Date();
   JOURS.forEach(function(j){
     var passe = j.slots.every(function(s){
@@ -1274,13 +1291,20 @@ function renderRepas() {
     if (!ouvert) {
       h += '<div class="dep-meta" style="margin-top:-4px">'+j.slots.map(function(s){
         var m = DATA.meals[j.id+'-'+s]||{};
-        return esc(SLOT_LABEL[s]+' : '+nomCuisine(m));
+        return esc(SLOT_LABEL[s]+' : '+(m.off?'pas de repas commun':nomCuisine(m)));
       }).join(' · ')+'</div>';
       h += '</section>';
       return;
     }
     j.slots.forEach(function(s){
       var id=j.id+'-'+s, m=DATA.meals[id]||{team:'',duo:null,menu:''};
+      if (m.off) {
+        h += '<div class="slot"><div class="slot-ligne"><span class="slot-label" style="text-decoration:line-through;opacity:.55">'+SLOT_LABEL[s]+'</span>';
+        h += '<span class="dep-meta" style="flex:1">Pas de repas commun — ne compte pas dans les comptes</span>';
+        h += '<button class="btn-wifi" style="flex:0 0 auto;padding:8px 10px;font-size:12.5px" onclick="retablirRepas(\''+id+'\')" aria-label="Rétablir le '+SLOT_LABEL[s]+' du '+esc(j.label)+'">Rétablir</button>';
+        h += '</div></div>';
+        return;
+      }
       var modeDuo = Array.isArray(m.duo);
       var val = modeDuo ? '__duo' : (m.team||'');
       h += '<div class="slot"><div class="slot-ligne"><span class="slot-label">'+SLOT_LABEL[s]+'</span>';
@@ -1289,7 +1313,9 @@ function renderRepas() {
       eqs.forEach(function(eq){ h+='<option value="'+esc(eq)+'"'+(val===eq?' selected':'')+'>'+esc(eq)+'</option>'; });
       h += '<option value="__duo"'+(val==='__duo'?' selected':'')+'>2 personnes ou + au choix…</option>';
       if (m.team && !modeDuo && eqs.indexOf(m.team)===-1) h+='<option value="'+esc(m.team)+'" selected>'+esc(m.team)+'</option>';
-      h += '</select></div>';
+      h += '</select>';
+      h += btnSuppr('meal-'+id, "supprRepas('"+id+"')", 'Supprimer le '+SLOT_LABEL[s]+' du '+j.label+' (restaurant, chacun de son côté…)');
+      h += '</div>';
       if (modeDuo) {
         var crew = m.duo.filter(Boolean);
         h += '<div class="duo-ligne">';
