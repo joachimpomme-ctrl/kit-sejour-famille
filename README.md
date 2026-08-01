@@ -18,13 +18,23 @@ compte Google (Apps Script + un Google Sheet pour les données).
   dans l'appli, rien à coder.
 - **Repas** : un planning déjeuner/dîner généré automatiquement d'après les
   dates (dîner seul le premier jour, déjeuner seul le dernier). Chaque service
-  est pris par un ménage ou un binôme libre, avec menu facultatif.
+  est pris par un ménage ou une équipe libre, avec menu facultatif. Absents
+  signalables par repas (défalqués des comptes) et invités de passage
+  ajoutables par repas (leurs parts à la charge du ménage qui invite).
 - **Dépenses** : saisie rapide, facture en photo ou PDF (facultatif), liste de
-  courses partagée, partage WhatsApp.
+  courses partagée, partage WhatsApp. Quatre clefs de répartition : aux parts
+  (tout le monde), entre certains ménages, entre les amateurs d'apéro/alcool,
+  ou par personne à prix par tête (ex : bateau à 25 € par personne, on coche
+  qui participe).
 - **Comptes** : répartition au nombre de parts (1 part par adulte, ½ part par
   enfant de moins de 10 ans, 0 pour les bébés et invités), remboursements de
   fin de séjour suggérés automatiquement. Option : prorata des nuits de
   présence, pour les groupes où chacun arrive et repart quand il veut.
+- **Sauvegarde et export** (onglet Réglages) : export de tout le séjour en
+  classeur Google Sheets (téléchargeable en Excel ou CSV), récap complet par
+  mail avec la sauvegarde des données en pièce jointe, copie/restauration de
+  sauvegarde, et « repartir à zéro » pour enchaîner un nouveau séjour sur la
+  même appli (l'ancien état reste archivé dans le classeur de données).
 - **Famille** : participants, ménages (les unités qui paient : ajout,
   renommage, suppression), parts, et dates d'arrivée/départ de chacun.
 - **Chambres** : répartition par logement avec alerte de surcapacité, encart

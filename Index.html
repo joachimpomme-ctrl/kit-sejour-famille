@@ -121,6 +121,7 @@ var PANNEAU = false;   // panneau admin déplié
 var LOGIN_UI = false;  // formulaire de connexion admin affiché (?admin=1)
 var CATS_ALERTES = [['repas','Repas'],['depenses','Dépenses'],['famille','Famille'],['chambres','Chambres'],['wifi','Wifi'],['courses','Pense-bête de courses'],['reglages','Réglages']];
 var FICHIER_DEP = null; // File choisi pour la facture (photo/PDF), avant envoi
+var EXPORT_URL = '';    // URL du classeur d'export (mémorisée pour la session)
 var EDIT_DEP = null;  // id de la dépense en cours de modification
 var AIDE_CPT = false; // explication des compteurs de l'onglet Comptes dépliée
 var AIDE_REPAS = false, AIDE_FAM = false; // aides longues dépliées
@@ -188,6 +189,10 @@ function lienLabel(e) {
     : cat ? cat.label
     : e.link==='menages' ? 'Autre'
     : slotNom(e.link);
+  if (Array.isArray(e.qui) && e.qui.length) {
+    var noms = e.qui.map(function(id){ var p=parId(id); return p?p.nom:null; }).filter(Boolean);
+    return base+' · par personne · '+(noms.length && noms.length<=3 ? noms.join(' + ') : (noms.length||e.qui.length)+' pers.');
+  }
   if (Array.isArray(e.pour) && e.pour.length) return base+' · pour '+e.pour.join(' + ');
   return base;
 }
@@ -279,11 +284,27 @@ function comptes() {
     var a = w * cnt / slotsSejour.length;
     assP[p.foyer]=(assP[p.foyer]||0)+a; totalAss += a;
   });
-  /* Répartition dépense par dépense, selon la catégorie : ciblée (ménages
-     cochés), apéro (personnes concernées), repas (assiduité aux repas, les
-     anciennes dépenses « courses » ou liées à un repas comptent ici),
-     activités et autre (tout le monde, aux parts). */
-  var total = 0, totCible = 0;
+  /* Invités d'un ménage sur un repas : chacun compte comme une part entière
+     de ce repas, à la charge du ménage qui invite. */
+  var nbInvites = 0;
+  slotsSejour.forEach(function(s){
+    var mm = DATA.meals[s];
+    if (!mm || !mm.inv) return;
+    Object.keys(mm.inv).forEach(function(f){
+      if (!parts.hasOwnProperty(f)) return;
+      var n = parseFloat(mm.inv[f])||0;
+      if (n<=0) return;
+      nbInvites += n;
+      var a = n / slotsSejour.length;
+      assP[f]=(assP[f]||0)+a; totalAss += a;
+    });
+  });
+  /* Répartition dépense par dépense, selon la catégorie : par personne
+     (montant divisé à parts égales entre les participants cochés, prix par
+     tête), ciblée (ménages cochés), apéro (personnes concernées), repas
+     (assiduité aux repas, les anciennes dépenses « courses » ou liées à un
+     repas comptent ici), activités et autre (tout le monde, aux parts). */
+  var total = 0, totCible = 0, totQui = 0;
   var tots = { repas:0, apero:0, activites:0, autre:0 };       // par catégorie, ciblées incluses
   var nc = { repas:0, apero:0, activites:0, autre:0 };         // hors ciblées, pour les compteurs
   DATA.expenses.forEach(function(e){
@@ -292,12 +313,21 @@ function comptes() {
     if (paye[e.payer]===undefined) { paye[e.payer]=0; du[e.payer]=0; }
     paye[e.payer] += m;
     var cible = Array.isArray(e.pour) ? e.pour.filter(function(f){ return parts.hasOwnProperty(f); }) : [];
+    var quiL = Array.isArray(e.qui) ? e.qui.map(parId).filter(Boolean) : [];
     var cat = e.link==='apero' ? 'apero'
       : (e.link==='repas' || e.link==='courses' || /-(dej|din)$/.test(String(e.link))) ? 'repas'
       : e.link==='activites' ? 'activites'
       : 'autre';
     tots[cat] += m;
-    if (cible.length) {
+    if (quiL.length) {
+      totQui += m;
+      var nbF = {};
+      quiL.forEach(function(p){ nbF[p.foyer]=(nbF[p.foyer]||0)+1; });
+      Object.keys(nbF).forEach(function(f){
+        if (du[f]===undefined) { du[f]=0; paye[f]=paye[f]||0; }
+        du[f] += m*nbF[f]/quiL.length;
+      });
+    } else if (cible.length) {
       totCible += m;
       var pc = 0; cible.forEach(function(f){ pc += parts[f]||0; });
       if (pc > 0) cible.forEach(function(f){ du[f] += m*(parts[f]||0)/pc; });
@@ -337,7 +367,7 @@ function comptes() {
     if(deb[i].m<0.01)i++; if(cre[j].m<0.01)j++;
   }
   return { total:total, totalParts:totalParts, lignes:lignes, virements:vir, partsParFoyer:parts, prorata:prorata,
-           tots:tots, totCible:totCible, absences:nbAbsents>0, horsRepasPart:horsRepasPart,
+           tots:tots, totCible:totCible, totQui:totQui, absences:nbAbsents>0, invites:nbInvites>0, horsRepasPart:horsRepasPart,
            repasEcoules:repasEcoules, repasTotal:slotsSejour.length, coutPartRepas:coutPartRepas };
 }
 
@@ -406,9 +436,78 @@ function absentAdd(slot, sel){
 function absentDel(slot, pid){
   op({t:'setMeal', slot:slot, patch:{absents: absentsDe(slot).filter(function(x){return x!==pid;})}});
 }
+/* Invités : m.inv = { "<ménage>": nombre }, le ménage hôte prend leurs parts
+   de ce repas à sa charge. */
+function invitesDe(slot){
+  var m = DATA.meals[slot];
+  return (m && m.inv) ? m.inv : {};
+}
+function inviteAdd(slot, sel){
+  var f = sel.value;
+  if (!f) return;
+  var cur = invitesDe(slot), inv = {};
+  Object.keys(cur).forEach(function(k){ inv[k]=cur[k]; });
+  inv[f] = (inv[f]||0)+1;
+  op({t:'setMeal', slot:slot, patch:{inv:inv}});
+}
+function inviteDel(slot, ki){
+  var cur = invitesDe(slot);
+  var f = Object.keys(cur)[ki];
+  if (f===undefined) return;
+  var inv = {};
+  Object.keys(cur).forEach(function(k){ inv[k]=cur[k]; });
+  inv[f] -= 1;
+  if (inv[f]<=0) delete inv[f];
+  op({t:'setMeal', slot:slot, patch:{inv:inv}});
+}
 function majZonePour(cb) {
   var z = document.getElementById('dep-pour');
   if (z) z.style.display = cb.checked ? 'flex' : 'none';
+  if (cb.checked) {
+    var q = document.getElementById('dep-qui');
+    if (q && q.checked) { q.checked = false; majZoneQui(q); }
+  }
+}
+function majZoneQui(cb) {
+  var z = document.getElementById('dep-qui-zone');
+  if (z) z.style.display = cb.checked ? 'flex' : 'none';
+  if (cb.checked) {
+    var q = document.getElementById('dep-cible');
+    if (q && q.checked) { q.checked = false; majZonePour(q); }
+  }
+}
+/* Coche tout le monde d'un coup (ou décoche tout si tout est déjà coché). */
+function basculerTousQui(prefixe) {
+  var tous = DATA.participants.every(function(p){
+    var cb = document.getElementById(prefixe+'-qui-'+p.id);
+    return !cb || cb.checked;
+  });
+  DATA.participants.forEach(function(p){
+    var cb = document.getElementById(prefixe+'-qui-'+p.id);
+    if (cb) cb.checked = !tous;
+  });
+}
+function lireQui(prefixe) {
+  var qui = [];
+  DATA.participants.forEach(function(p){
+    var cb = document.getElementById(prefixe+'-qui-'+p.id);
+    if (cb && cb.checked) qui.push(p.id);
+  });
+  return qui;
+}
+/* Chips des participants (groupés par ménage) pour la répartition par personne. */
+function htmlChipsQui(prefixe, sel) {
+  var h = '';
+  listeFoyers().forEach(function(f){
+    DATA.participants.forEach(function(p){
+      if (p.foyer !== f) return;
+      var coche = sel && sel.indexOf(p.id) !== -1;
+      h += '<label class="chip" style="cursor:pointer;gap:6px;padding:5px 11px"><input type="checkbox" id="'+prefixe+'-qui-'+p.id+'"'+(coche?' checked':'')+' style="width:18px;height:18px">'+esc(p.nom)+'</label>';
+    });
+  });
+  h += '<button type="button" class="btn-wifi" style="flex:0 0 auto;padding:5px 11px;font-size:12.5px" onclick="basculerTousQui(\''+prefixe+'\')">Tout le monde / personne</button>';
+  h += '<span class="dep-meta" style="flex-basis:100%">Montant divisé à parts égales entre les personnes cochées (prix par tête, ex : bateau à 25 € par personne), quel que soit leur nombre de parts.</span>';
+  return h;
 }
 function ajouterDepense() {
   var label=document.getElementById('dep-label').value.trim();
@@ -429,10 +528,18 @@ function ajouterDepense() {
     });
     if (!pour.length) { err.textContent='Coche le ou les ménages concernés.'; return; }
   }
+  var qui = null;
+  var cbQui = document.getElementById('dep-qui');
+  if (cbQui && cbQui.checked) {
+    qui = lireQui('dep');
+    if (!qui.length) { err.textContent='Coche les personnes qui participent.'; return; }
+    pour = null;
+  }
   err.textContent='';
   NOTE_DEP='';
   var exp={label:label,amount:m,payer:payeur,link:lien};
   if (pour) exp.pour = pour;
+  if (qui) exp.qui = qui;
   if(!FICHIER_DEP){ op({t:'addExpense',exp:exp}); return; }
   var b=document.getElementById('btn-dep');
   if(b){ b.disabled=true; b.textContent='Envoi de la facture…'; }
@@ -509,11 +616,23 @@ function editerDep(id){ EDIT_DEP = EDIT_DEP===id ? null : id; render(); }
 function majZonePourEdit(cb){
   var z = document.getElementById('redep-pour');
   if (z) z.style.display = cb.checked ? 'flex' : 'none';
+  if (cb.checked) {
+    var q = document.getElementById('redep-qui');
+    if (q && q.checked) { q.checked = false; majZoneQuiEdit(q); }
+  }
+}
+function majZoneQuiEdit(cb){
+  var z = document.getElementById('redep-qui-zone');
+  if (z) z.style.display = cb.checked ? 'flex' : 'none';
+  if (cb.checked) {
+    var q = document.getElementById('redep-cible');
+    if (q && q.checked) { q.checked = false; majZonePourEdit(q); }
+  }
 }
 function validerReaffect(id){
   var lien = document.getElementById('redep-lien').value;
   var err = document.getElementById('redep-err');
-  var o = {t:'setExpense', id:id, link:lien, pour:null};
+  var o = {t:'setExpense', id:id, link:lien, pour:null, qui:null};
   var lb = document.getElementById('redep-label');
   if (lb && lb.value.trim()) o.label = lb.value.trim();
   var py = document.getElementById('redep-payeur');
@@ -527,6 +646,13 @@ function validerReaffect(id){
     });
     if (!pour.length) { if (err) err.textContent='Coche le ou les ménages concernés.'; return; }
     o.pour = pour;
+  }
+  var cbQui = document.getElementById('redep-qui');
+  if (cbQui && cbQui.checked) {
+    var qui = lireQui('redep');
+    if (!qui.length) { if (err) err.textContent='Coche les personnes qui participent.'; return; }
+    o.qui = qui;
+    o.pour = null;
   }
   EDIT_DEP = null;
   op(o);
@@ -792,6 +918,8 @@ function texteRepas() {
       l.push(SLOT_LABEL[s]+' : '+nomCuisine(m)+(m.menu?' · '+m.menu:''));
       var abs = (m.absents||[]).map(function(id){ var p=parId(id); return p?p.nom:null; }).filter(Boolean);
       if (abs.length) l.push('Absents : '+abs.join(', '));
+      var ik = Object.keys(m.inv||{});
+      if (ik.length) l.push('Invités : '+ik.map(function(k){ return k+' +'+m.inv[k]; }).join(', '));
     });
   });
   return l.join('\n');
@@ -824,6 +952,7 @@ function texteComptes() {
   l.push('- Activités : '+eur(c.tots.activites));
   l.push('- Autre : '+eur(c.tots.autre));
   if (c.totCible) l.push('Dont ciblé « pour certains ménages » : '+eur(c.totCible));
+  if (c.totQui) l.push('Dont réparti par personne (prix par tête) : '+eur(c.totQui));
   l.push(''); l.push('Soldes par ménage :');
   c.lignes.forEach(function(x){
     l.push(x.foyer+' ('+frNum(x.parts)+' parts) : '+(x.solde>=0?'+':'')+eur(x.solde));
@@ -874,6 +1003,167 @@ function texteReglages() {
   var c = DATA.config||{};
   var l = [titreApp(), periodeCourte()+(c.sousTitre?' · '+c.sousTitre:'')];
   return l.join('\n');
+}
+
+/* --- Export complet (tableur + récap mail) --- */
+
+function arrondi2(x){ return Math.round((x||0)*100)/100; }
+function nomChambreCli(roomId){
+  var r = null, bat = '';
+  DATA.batiments.forEach(function(b){ b.rooms.forEach(function(x){ if (x.id===roomId){ r=x; bat=b.nom; } }); });
+  return r ? bat+' · '+r.nom : '';
+}
+/** Tout le séjour sous forme de feuilles (titre + lignes), pour le classeur
+ *  d'export et le récap mail. Première ligne = en-têtes quand entete vaut 1. */
+function feuillesExport() {
+  var c = comptes();
+  var cfg = DATA.config||{};
+  var f = [];
+  var rec = [['Séjour', titreApp()]];
+  if (cfg.sousTitre) rec.push(['Lieu', cfg.sousTitre]);
+  rec.push(['Dates', periodeCourte()]);
+  rec.push(['Personnes', DATA.participants.length]);
+  rec.push(['Parts', arrondi2(c.totalParts)]);
+  rec.push(['Dépenses totales (€)', arrondi2(c.total)]);
+  rec.push(['dont Repas & courses (€)', arrondi2(c.tots.repas)]);
+  rec.push(['dont Apéro / alcool (€)', arrondi2(c.tots.apero)]);
+  rec.push(['dont Activités (€)', arrondi2(c.tots.activites)]);
+  rec.push(['dont Autre (€)', arrondi2(c.tots.autre)]);
+  f.push({nom:'Récap', lignes:rec});
+  var cl = [['Ménage','Parts','A payé (€)','Doit (€)','Solde (€)']];
+  c.lignes.forEach(function(l){ cl.push([l.foyer, arrondi2(l.parts), arrondi2(l.paye), arrondi2(l.du), arrondi2(l.solde)]); });
+  cl.push(['']);
+  cl.push(['Remboursements suggérés']);
+  if (!c.virements.length) cl.push(['Rien à rembourser, tout le monde est à l\'équilibre.']);
+  c.virements.forEach(function(v){ cl.push([v.de+' → '+v.vers, '', '', '', arrondi2(v.montant)]); });
+  f.push({nom:'Comptes', lignes:cl, entete:1});
+  var dl = [['Date','Libellé','Payé par','Catégorie et répartition','Montant (€)','Facture']];
+  DATA.expenses.slice().sort(function(a,b){return a.ts-b.ts;}).forEach(function(e){
+    var dt = e.ts ? new Date(e.ts) : null;
+    dl.push([dt ? ('0'+dt.getDate()).slice(-2)+'/'+('0'+(dt.getMonth()+1)).slice(-2) : '',
+             e.label, e.payer, lienLabel(e), arrondi2(e.amount||0),
+             e.pj ? 'https://drive.google.com/file/d/'+e.pj+'/view' : '']);
+  });
+  f.push({nom:'Dépenses', lignes:dl, entete:1});
+  var pl = [['Prénom','Ménage','Parts','Apéro','Arrivée','Départ','Chambre']];
+  DATA.participants.forEach(function(p){
+    pl.push([p.nom, p.foyer, parseFloat(p.poids)||0, aperoDe(p)?'oui':'non',
+             p.arrivee||'', p.depart||'', nomChambreCli((DATA.chambres||{})[p.id])]);
+  });
+  f.push({nom:'Famille', lignes:pl, entete:1});
+  var rl = [['Jour','Service','Cuisine','Menu','Absents','Invités']];
+  JOURS.forEach(function(j){
+    j.slots.forEach(function(s){
+      var m = DATA.meals[j.id+'-'+s]||{};
+      var abs = (m.absents||[]).map(function(id){ var p=parId(id); return p?p.nom:null; }).filter(Boolean).join(', ');
+      var inv = Object.keys(m.inv||{}).map(function(k){ return k+' +'+m.inv[k]; }).join(', ');
+      rl.push([j.label, SLOT_LABEL[s], nomCuisine(m), m.menu||'', abs, inv]);
+    });
+  });
+  f.push({nom:'Repas', lignes:rl, entete:1});
+  if (DATA.batiments.length) {
+    var chl = [['Logement','Chambre','Lits','Occupants']];
+    DATA.batiments.forEach(function(b){
+      b.rooms.forEach(function(r){
+        var occ = DATA.participants.filter(function(p){ return (DATA.chambres||{})[p.id]===r.id; })
+          .map(function(p){ return p.nom; }).join(', ');
+        chl.push([b.nom, r.nom, r.lits||'', occ]);
+      });
+    });
+    f.push({nom:'Chambres', lignes:chl, entete:1});
+  }
+  var co = (DATA.liste||[]).filter(function(x){ return !x.fait; });
+  if (co.length) {
+    var col = [['À acheter']];
+    co.forEach(function(x){ col.push([x.txt]); });
+    f.push({nom:'Courses', lignes:col, entete:1});
+  }
+  return { titre:titreApp(), sousTitre:cfg.sousTitre||'', feuilles:f };
+}
+function exporterTableur(btn){
+  var n = document.getElementById('exp-note');
+  btn.disabled = true; btn.textContent = 'Export en cours… (quelques secondes)';
+  google.script.run.withSuccessHandler(function(url){
+    EXPORT_URL = url;
+    btn.disabled = false; btn.textContent = 'Exporter en tableur (Excel / Sheets)';
+    if (n) n.innerHTML = 'Classeur prêt : <a href="'+esc(url)+'" target="_blank" rel="noopener">ouvrir l\'export</a>. Depuis Google Sheets : Fichier → Télécharger → Excel (.xlsx) ou CSV.';
+  }).withFailureHandler(function(){
+    btn.disabled = false; btn.textContent = 'Exporter en tableur (Excel / Sheets)';
+    if (n) n.textContent = 'Échec de l\'export. Vérifie ta connexion et réessaie.';
+  }).exporterClasseur(JSON.stringify(feuillesExport()));
+}
+function envoyerRecapMail(btn){
+  var el = document.getElementById('recap-mail');
+  var n = document.getElementById('recap-note');
+  var m = el ? el.value.trim() : '';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(m)) { if (n) n.textContent = 'Entre une adresse mail valable.'; return; }
+  btn.disabled = true; var t = btn.textContent; btn.textContent = 'Envoi…';
+  google.script.run.withSuccessHandler(function(j){
+    var r = JSON.parse(j);
+    btn.disabled = false; btn.textContent = t;
+    if (n) n.textContent = r.ok ? 'Récap envoyé à '+m+'. S\'il n\'arrive pas, regarde dans les indésirables.'
+      : r.err==='quota' ? 'Trop d\'envois pour le moment : réessaie dans une heure.'
+      : 'Adresse refusée, vérifie-la.';
+  }).withFailureHandler(function(){
+    btn.disabled = false; btn.textContent = t;
+    if (n) n.textContent = 'Échec de l\'envoi. Réessaie.';
+  }).envoyerRecap(m, JSON.stringify(feuillesExport()));
+}
+function copierSauvegarde(btn){
+  var t = btn.textContent;
+  copierTexte(JSON.stringify(DATA), function(){
+    btn.textContent = 'Copié ✓ — colle-le dans une note ou un mail';
+    setTimeout(function(){ btn.textContent = t; }, 2500);
+  });
+}
+function importerSauvegarde(btn){
+  var ta = document.getElementById('imp-json');
+  var n = document.getElementById('imp-note');
+  var v = ta ? ta.value.trim() : '';
+  if (n) n.textContent = '';
+  if (!v) { if (n) n.textContent = 'Colle d\'abord le texte d\'une sauvegarde.'; return; }
+  try {
+    var d = JSON.parse(v);
+    if (!d || !Array.isArray(d.participants)) throw 0;
+  } catch(e) { if (n) n.textContent = 'Ce texte n\'est pas une sauvegarde de l\'app.'; return; }
+  if (btn.dataset.arme!=='1') {
+    btn.dataset.arme = '1';
+    btn.textContent = 'Sûr ? Les données actuelles seront remplacées';
+    setTimeout(function(){ btn.dataset.arme=''; btn.textContent='Importer cette sauvegarde'; }, 3000);
+    return;
+  }
+  btn.disabled = true; btn.textContent = 'Import en cours…';
+  setSync('…');
+  google.script.run.withSuccessHandler(function(j){
+    var r = JSON.parse(j);
+    if (!r.ok) {
+      btn.disabled = false; btn.dataset.arme=''; btn.textContent = 'Importer cette sauvegarde';
+      if (n) n.textContent = 'Import refusé : sauvegarde incomplète.';
+      setSync(''); return;
+    }
+    DATA = r.data; setSync('ok'); render();
+  }).withFailureHandler(function(){
+    btn.disabled = false; btn.dataset.arme=''; btn.textContent = 'Importer cette sauvegarde';
+    if (n) n.textContent = 'Échec de l\'import. Vérifie ta connexion et réessaie.';
+    setSync('échec');
+  }).importerDonnees(v);
+}
+function reinitialiser(btn){
+  if (btn.dataset.arme!=='1') {
+    btn.dataset.arme = '1';
+    btn.textContent = 'Sûr ? Le séjour repart à zéro pour tout le monde';
+    setTimeout(function(){ btn.dataset.arme=''; btn.textContent='Repartir à zéro (nouveau séjour)'; }, 3000);
+    return;
+  }
+  btn.disabled = true; btn.textContent = 'Remise à zéro…';
+  setSync('…');
+  google.script.run.withSuccessHandler(function(j){
+    var r = JSON.parse(j);
+    DATA = r.data; setSync('ok'); render();
+  }).withFailureHandler(function(){
+    btn.disabled = false; btn.dataset.arme=''; btn.textContent = 'Repartir à zéro (nouveau séjour)';
+    setSync('échec');
+  }).reinitialiserSejour();
 }
 /** Récap de présence par ménage : une entrée par ménage, avec détail par
  *  personne quand les dates diffèrent au sein du ménage. */
@@ -971,7 +1261,7 @@ function renderRepas() {
   var eqs = equipes();
   var cuisiniers = DATA.participants.filter(function(p){ return (parseFloat(p.poids)||0)>=1; });
   var h = '<p class="aide"><button class="btn-lien" onclick="AIDE_REPAS=!AIDE_REPAS;render()">'+(AIDE_REPAS?'Masquer l\'aide':'Comment ça marche ?')+'</button></p>';
-  if (AIDE_REPAS) h += '<p class="aide">Un ménage ou une petite équipe de volontaires prend en général le déjeuner et le dîner du même jour. Si un ménage ou quelques personnes sautent un repas, signale-les en « Absents » sur ce repas : leur part de ce repas et des courses est défalquée automatiquement dans les comptes. Les jours passés sont repliés, tape sur un jour pour le déplier ou le replier.</p>';
+  if (AIDE_REPAS) h += '<p class="aide">Un ménage ou une petite équipe de volontaires prend en général le déjeuner et le dîner du même jour. Si un ménage ou quelques personnes sautent un repas, signale-les en « Absents » sur ce repas : leur part de ce repas et des courses est défalquée automatiquement dans les comptes. À l\'inverse, « Invités ? » ajoute des amis de passage sur un repas : leurs parts sont à la charge du ménage qui invite. Les jours passés sont repliés, tape sur un jour pour le déplier ou le replier.</p>';
   var maintenant = new Date();
   JOURS.forEach(function(j){
     var passe = j.slots.every(function(s){
@@ -1036,7 +1326,16 @@ function renderRepas() {
         if (absentsDe(id).indexOf(p.id)!==-1) return;
         h += '<option value="'+p.id+'">'+esc(p.nom)+'</option>';
       });
-      h += '</optgroup></select></div>';
+      h += '</optgroup></select>';
+      var invObj = invitesDe(id);
+      var invKeys = Object.keys(invObj);
+      invKeys.forEach(function(f, ki){
+        h += '<span class="chip">'+esc(f)+' +'+invObj[f]+' invité'+(invObj[f]>1?'s':'')+'<button onclick="inviteDel(\''+id+'\','+ki+')" aria-label="Retirer un invité de '+esc(f)+' à ce repas">×</button></span>';
+      });
+      h += '<select class="select-lien" onchange="inviteAdd(\''+id+'\',this)" aria-label="Ajouter un invité à ce repas, à la charge du ménage qui invite">';
+      h += '<option value="">'+(invKeys.length?'+ Invité':'Invités ?')+'</option>';
+      listeFoyers().forEach(function(f){ h+='<option value="'+esc(f)+'">+1 invité de '+esc(f)+'</option>'; });
+      h += '</select></div>';
       h += '</div>';
     });
     h += '</section>';
@@ -1081,6 +1380,8 @@ function renderDepenses() {
     h += '<label class="chip" style="cursor:pointer;gap:6px;padding:5px 11px"><input type="checkbox" id="dep-pour-'+i+'" style="width:18px;height:18px">'+esc(f)+'</label>';
   });
   h += '<span class="dep-meta" style="flex-basis:100%">La dépense garde sa catégorie mais n\'est partagée qu\'entre les ménages cochés (au prorata de leurs parts).</span></div>';
+  h += '<label class="alerte-cat" style="border-top:none;padding:2px 0"><input type="checkbox" id="dep-qui" onchange="majZoneQui(this)"><span style="font-weight:600;font-size:14px">Prix par personne (activité, sortie…)</span></label>';
+  h += '<div id="dep-qui-zone" class="chips" style="display:none">'+htmlChipsQui('dep', null)+'</div>';
   h += '<input type="file" id="dep-fichier" accept="image/*,application/pdf" style="display:none" onchange="choisirFacture(this)">';
   h += '<div id="dep-pj-zone">'+htmlZonePj()+'</div>';
   h += '<p id="dep-erreur" class="erreur"></p>';
@@ -1102,6 +1403,7 @@ function renderDepenses() {
       var lienCourant = CATS.some(function(cc){return cc.id===e.link;}) ? e.link
         : (e.link==='courses' || /-(dej|din)$/.test(String(e.link))) ? 'repas' : 'autre';
       var estCible = !!(e.pour && e.pour.length);
+      var estQui = !!(e.qui && e.qui.length);
       h += '<section class="carte alerte"><div class="dep-meta">Modifier cette dépense ('+eur(e.amount)+', montant non modifiable — supprime et ressaisis si besoin) :</div>';
       h += '<input id="redep-label" value="'+esc(e.label)+'" aria-label="Libellé de la dépense">';
       h += '<select id="redep-payeur" aria-label="Payé par">';
@@ -1117,7 +1419,10 @@ function renderDepenses() {
         var coche = e.pour && e.pour.indexOf(f)!==-1;
         h += '<label class="chip" style="cursor:pointer;gap:6px;padding:5px 11px"><input type="checkbox" id="redep-pour-'+i+'"'+(coche?' checked':'')+' style="width:18px;height:18px">'+esc(f)+'</label>';
       });
-      h += '</div><p id="redep-err" class="erreur"></p>';
+      h += '</div>';
+      h += '<label class="alerte-cat" style="border-top:none;padding:2px 0"><input type="checkbox" id="redep-qui"'+(estQui?' checked':'')+' onchange="majZoneQuiEdit(this)"><span style="font-weight:600;font-size:14px">Prix par personne (activité, sortie…)</span></label>';
+      h += '<div id="redep-qui-zone" class="chips" style="display:'+(estQui?'flex':'none')+'">'+htmlChipsQui('redep', e.qui||null)+'</div>';
+      h += '<p id="redep-err" class="erreur"></p>';
       h += '<div class="ligne-h"><button class="btn flex1" onclick="validerReaffect(\''+e.id+'\')">Valider</button>';
       h += '<button class="btn-x" onclick="EDIT_DEP=null;render()" aria-label="Annuler la réaffectation">Annuler</button></div>';
       h += '</section>';
@@ -1137,17 +1442,20 @@ function renderComptes() {
     h += '<div><div class="resume-label">Repas + apéro, par part et par repas passé</div><div class="chiffre" style="font-size:26px">'+(c.repasEcoules?eur(c.coutPartRepas):'—')+'</div></div>';
     h += '<div style="text-align:right"><div class="resume-label">Repas passés</div><div class="chiffre" style="font-size:26px">'+c.repasEcoules+' / '+c.repasTotal+'</div></div></div>';
     h += '<button class="btn-lien" style="align-self:flex-start" onclick="AIDE_CPT=!AIDE_CPT;render()">'+(AIDE_CPT?'Masquer l\'explication':'Comment lire ces chiffres ?')+'</button>';
-    if (AIDE_CPT) h += '<p class="aide" style="margin:0">À gauche : la nourriture (repas & courses + apéro), divisée par les parts puis par les repas déjà passés — compare à ton budget habituel par personne et par repas. « Hors repas » : activités et autre, par part sur tout le séjour. Les dépenses ciblées sur des ménages ne sont pas dans ces deux compteurs.</p>';
+    if (AIDE_CPT) h += '<p class="aide" style="margin:0">À gauche : la nourriture (repas & courses + apéro), divisée par les parts puis par les repas déjà passés — compare à ton budget habituel par personne et par repas. « Hors repas » : activités et autre, par part sur tout le séjour. Les dépenses ciblées sur des ménages ou réparties par personne ne sont pas dans ces deux compteurs.</p>';
   }
   h += '<div class="dep-meta">'+frNum(c.totalParts)+' parts au total'
     +(c.prorata?' · au prorata des nuits de présence':'')
     +(c.absences?' · les absences signalées sur les repas sont défalquées':'')
+    +(c.invites?' · les invités d\'un repas sont à la charge du ménage qui invite':'')
     +' · pondérations et présences dans l\'onglet Famille</div></section>';
   h += '<section class="carte"><h2 class="carte-titre">Par catégorie</h2>';
   [['repas','Repas & courses'],['apero','Apéro / alcool'],['activites','Activités'],['autre','Autre']].forEach(function(k){
     h += '<div class="total-ligne" style="padding:2px 0;border-top:1px solid #F0EDE4"><span style="font-weight:600">'+k[1]+'</span><span class="chiffre">'+eur(c.tots[k[0]])+'</span></div>';
   });
-  h += '<p class="aide" style="margin:0">Apéro : réparti entre les personnes marquées d\'un verre dans Famille.'+(c.totCible?' '+eur(c.totCible)+' de ces montants sont ciblés « pour certains ménages » et à leur seule charge.':'')+'</p>';
+  h += '<p class="aide" style="margin:0">Apéro : réparti entre les personnes marquées d\'un verre dans Famille.'
+    +(c.totCible?' '+eur(c.totCible)+' de ces montants sont ciblés « pour certains ménages » et à leur seule charge.':'')
+    +(c.totQui?' '+eur(c.totQui)+' sont répartis par personne (prix par tête), à la charge des seuls participants cochés.':'')+'</p>';
   h += '</section>';
   h += '<section class="carte"><h2 class="carte-titre">Soldes par ménage</h2>';
   c.lignes.forEach(function(l){
@@ -1378,6 +1686,26 @@ function renderReglages() {
     h += '</section>';
   });
   h += '<button class="btn-pj" onclick="ajouterBatiment()">+ Ajouter un logement (maison, gîte, annexe…)</button>';
+  h += '<section class="carte"><h2 class="carte-titre">Sauvegarde et export</h2>';
+  h += '<button class="btn" onclick="exporterTableur(this)">Exporter en tableur (Excel / Sheets)</button>';
+  h += '<p id="exp-note" class="aide" style="margin:0">'+(EXPORT_URL
+    ? 'Classeur prêt : <a href="'+esc(EXPORT_URL)+'" target="_blank" rel="noopener">ouvrir l\'export</a>. Depuis Google Sheets : Fichier → Télécharger → Excel (.xlsx) ou CSV.'
+    : 'Tout le séjour dans un classeur : comptes, dépenses, repas, chambres… téléchargeable en Excel ou CSV, avec la sauvegarde complète en dernière feuille.')+'</p>';
+  h += '<div class="ligne-h"><input id="recap-mail" class="flex1" inputmode="email" autocomplete="email" placeholder="Adresse mail">';
+  h += '<button class="btn" style="width:auto;padding:11px 14px" onclick="envoyerRecapMail(this)">Recevoir le récap</button></div>';
+  h += '<p id="recap-note" class="aide" style="margin:0">Un mail bien présenté avec tout le séjour, plus la sauvegarde complète en pièce jointe.</p>';
+  h += '<button class="btn-pj" onclick="copierSauvegarde(this)">Copier la sauvegarde (texte à garder de côté)</button>';
+  h += '</section>';
+  h += '<section class="carte"><h2 class="carte-titre">Nouveau séjour, restauration</h2>';
+  h += '<p class="aide" style="margin:0">Pour de nouvelles vacances sur cette même app : garde une sauvegarde ci-dessus, puis repars à zéro. L\'ancien état reste archivé dans le classeur de données, et une sauvegarde se réimporte ici à tout moment.</p>';
+  h += '<button class="btn-pj" onclick="reinitialiser(this)">Repartir à zéro (nouveau séjour)</button>';
+  h += '<textarea id="imp-json" rows="3" placeholder="Colle ici une sauvegarde (le texte copié ou le fichier .json ouvert) pour la restaurer" style="font-family:\'Public Sans\',system-ui,sans-serif;font-size:16px;color:#1E3350;border:1px solid #D8D3C6;border-radius:10px;background:#FBFAF6;padding:10px 12px;width:100%;resize:vertical"></textarea>';
+  h += '<button class="btn-pj" onclick="importerSauvegarde(this)">Importer cette sauvegarde</button>';
+  h += '<p id="imp-note" class="erreur" style="margin:0"></p>';
+  h += '</section>';
+  h += '<section class="carte"><h2 class="carte-titre">Cette app pour tes propres vacances</h2>';
+  h += '<p class="aide" style="margin:0">L\'app est un kit gratuit et réutilisable : chacun peut créer la sienne, avec ses propres données, sur son propre compte Google. Mode d\'emploi et code : <a href="https://github.com/joachimpomme-ctrl/kit-sejour-famille" target="_blank" rel="noopener">github.com/joachimpomme-ctrl/kit-sejour-famille</a>.</p>';
+  h += '</section>';
   return h;
 }
 

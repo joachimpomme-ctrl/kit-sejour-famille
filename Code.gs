@@ -238,6 +238,16 @@ function appliquer_(d, op) {
         m.absents = Array.isArray(op.patch.absents)
           ? op.patch.absents.slice(0, 100).map(String) : [];
       }
+      if (op.patch.hasOwnProperty('inv')) {
+        var inv = {};
+        if (op.patch.inv && typeof op.patch.inv === 'object') {
+          Object.keys(op.patch.inv).slice(0, 30).forEach(function (f) {
+            var n = Math.floor(parseFloat(op.patch.inv[f]) || 0);
+            if (n > 0) inv[String(f).slice(0, 40)] = Math.min(n, 30);
+          });
+        }
+        if (Object.keys(inv).length) m.inv = inv; else delete m.inv;
+      }
       d.meals[op.slot] = m;
       break;
     }
@@ -251,7 +261,9 @@ function appliquer_(d, op) {
         link: String(op.exp.link || 'autre')
       };
       if (op.exp.pj) exp.pj = String(op.exp.pj).slice(0, 80);
-      if (Array.isArray(op.exp.pour) && op.exp.pour.length) {
+      if (Array.isArray(op.exp.qui) && op.exp.qui.length) {
+        exp.qui = op.exp.qui.slice(0, 60).map(function (id) { return String(id).slice(0, 24); });
+      } else if (Array.isArray(op.exp.pour) && op.exp.pour.length) {
         exp.pour = op.exp.pour.slice(0, 12).map(function (f) { return String(f).slice(0, 40); });
       }
       d.expenses.push(exp);
@@ -273,6 +285,10 @@ function appliquer_(d, op) {
         if (Array.isArray(op.pour) && op.pour.length) {
           e.pour = op.pour.slice(0, 12).map(function (f) { return String(f).slice(0, 40); });
         } else if (op.hasOwnProperty('pour')) delete e.pour;
+        if (Array.isArray(op.qui) && op.qui.length) {
+          e.qui = op.qui.slice(0, 60).map(function (id) { return String(id).slice(0, 24); });
+          delete e.pour;
+        } else if (op.hasOwnProperty('qui')) delete e.qui;
       });
       break;
     }
@@ -423,7 +439,14 @@ function appliquer_(d, op) {
         if (e.payer === de) e.payer = vers;
         if (Array.isArray(e.pour)) e.pour = e.pour.map(function (f) { return f === de ? vers : f; });
       });
-      Object.keys(d.meals).forEach(function (k) { if (d.meals[k].team === de) d.meals[k].team = vers; });
+      Object.keys(d.meals).forEach(function (k) {
+        if (d.meals[k].team === de) d.meals[k].team = vers;
+        var inv = d.meals[k].inv;
+        if (inv && inv.hasOwnProperty(de)) {
+          inv[vers] = (inv[vers] || 0) + inv[de];
+          delete inv[de];
+        }
+      });
       break;
     }
     case 'delFoyer': {
@@ -439,6 +462,198 @@ function libererChambre_(d, roomId) {
   Object.keys(d.chambres).forEach(function (pid) {
     if (d.chambres[pid] === roomId) delete d.chambres[pid];
   });
+}
+
+/* ------------------------- Export & sauvegarde ------------------------ */
+
+var EXPORT_PROP = 'SEJOUR_EXPORT_ID';
+
+/** Crée ou met à jour le classeur d'export (un seul, réutilisé à chaque
+ *  export) à partir des feuilles préparées par le client, et renvoie son URL.
+ *  Depuis Google Sheets, le classeur se télécharge en Excel (.xlsx) ou CSV.
+ *  La dernière feuille contient la sauvegarde JSON complète, réimportable. */
+function exporterClasseur(payloadJson) {
+  var p = JSON.parse(payloadJson);
+  var titre = String(p.titre || 'Séjour').slice(0, 60);
+  var props = PropertiesService.getScriptProperties();
+  var ss = null;
+  var id = props.getProperty(EXPORT_PROP);
+  if (id) { try { ss = SpreadsheetApp.openById(id); } catch (e) { ss = null; } }
+  if (!ss) {
+    ss = SpreadsheetApp.create(titre + ' — export');
+    try {
+      DriveApp.getFileById(ss.getId()).setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch (e) {}
+    props.setProperty(EXPORT_PROP, ss.getId());
+  }
+  try { ss.rename(titre + ' — export du ' + Utilities.formatDate(new Date(), 'Europe/Paris', 'dd/MM/yyyy HH:mm')); } catch (e) {}
+  var feuilles = (p.feuilles || []).slice(0, 12);
+  var noms = [];
+  feuilles.forEach(function (f, i) {
+    var nom = String(f.nom || 'Feuille ' + (i + 1)).slice(0, 50);
+    noms.push(nom);
+    var sh = ss.getSheetByName(nom) || ss.insertSheet(nom, i);
+    sh.clear();
+    var lignes = (f.lignes || []).slice(0, 3000);
+    if (!lignes.length) return;
+    var larg = 1;
+    lignes.forEach(function (l) { if (l.length > larg) larg = l.length; });
+    larg = Math.min(larg, 40);
+    var vals = lignes.map(function (l) {
+      var r = [];
+      for (var c = 0; c < larg; c++) {
+        var v = l[c];
+        r.push(v === undefined || v === null ? '' : (typeof v === 'number' ? v : String(v).slice(0, 5000)));
+      }
+      return r;
+    });
+    sh.getRange(1, 1, vals.length, larg).setValues(vals);
+    if (f.entete) {
+      sh.getRange(1, 1, 1, larg).setFontWeight('bold');
+      try { sh.setFrozenRows(1); } catch (e) {}
+    }
+    try { sh.autoResizeColumns(1, larg); } catch (e) {}
+  });
+  var nomJson = 'Sauvegarde (JSON)';
+  noms.push(nomJson);
+  var shJ = ss.getSheetByName(nomJson) || ss.insertSheet(nomJson);
+  shJ.clear();
+  shJ.getRange(1, 1).setValue('Copie complète des données du séjour. Pour restaurer : copier la cellule A2 dans « Importer une sauvegarde », onglet Réglages de l\'app.');
+  shJ.getRange(2, 1).setValue(JSON.stringify(readData_()));
+  ss.getSheets().forEach(function (sh) {
+    if (noms.indexOf(sh.getName()) === -1 && ss.getSheets().length > 1) {
+      try { ss.deleteSheet(sh); } catch (e) {}
+    }
+  });
+  SpreadsheetApp.flush();
+  return ss.getUrl();
+}
+
+/** Envoie le récapitulatif complet par mail (tableaux HTML aux couleurs de
+ *  l'app + sauvegarde JSON en pièce jointe). Le lien de l'app étant public,
+ *  l'envoi est limité à quelques mails par heure. */
+function envoyerRecap(email, payloadJson) {
+  var dest = String(email || '').trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dest)) return JSON.stringify({ ok: false, err: 'mail' });
+  var cache = CacheService.getScriptCache();
+  var n = parseInt(cache.get('recap_n') || '0', 10);
+  if (n >= 8 || MailApp.getRemainingDailyQuota() < 10) return JSON.stringify({ ok: false, err: 'quota' });
+  var p = JSON.parse(payloadJson);
+  var titre = String(p.titre || 'Séjour').slice(0, 60);
+  var feuilles = (p.feuilles || []).slice(0, 12);
+  var texte = feuilles.map(function (f) {
+    return f.nom + '\n' + (f.lignes || []).map(function (l) { return l.join(' · '); }).join('\n');
+  }).join('\n\n');
+  var pj = Utilities.newBlob(JSON.stringify(readData_()), 'application/json', 'sauvegarde ' + titre + '.json');
+  MailApp.sendEmail({
+    to: dest,
+    subject: titre + ' — récapitulatif du séjour',
+    body: texte.slice(0, 20000),
+    htmlBody: recapHtml_(titre, String(p.sousTitre || '').slice(0, 120), feuilles),
+    name: titre,
+    attachments: [pj]
+  });
+  cache.put('recap_n', String(n + 1), 3600);
+  return JSON.stringify({ ok: true });
+}
+
+function recapHtml_(titre, sousTitre, feuilles) {
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function cell(v, tag) {
+    var num = typeof v === 'number';
+    var txt = num ? (v % 1 === 0 ? String(v) : v.toFixed(2).replace('.', ',')) : esc(v);
+    return '<' + tag + ' style="padding:6px 9px;border:1px solid #E5E1D5;font-size:13px;text-align:' + (num ? 'right' : 'left') + ';' +
+      (tag === 'th' ? 'background:#1E3350;color:#F6F4EE;font-weight:600;' : 'background:#FFFFFF;') + '">' + txt + '</' + tag + '>';
+  }
+  var url = '';
+  try { url = ScriptApp.getService().getUrl() || ''; } catch (e) {}
+  var h = '<div style="font-family:Helvetica,Arial,sans-serif;max-width:660px;margin:0 auto;background:#F6F4EE;padding:20px;color:#1E3350">';
+  h += '<div style="height:12px;background:#1E3350;border-radius:8px 8px 0 0"></div>';
+  h += '<h1 style="margin:14px 0 0;font-size:23px">' + esc(titre) + '</h1>';
+  if (sousTitre) h += '<p style="margin:2px 0 0;color:#B0752C;font-weight:600">' + esc(sousTitre) + '</p>';
+  feuilles.forEach(function (f) {
+    var lignes = (f.lignes || []).slice(0, 400);
+    if (!lignes.length) return;
+    h += '<h2 style="font-size:16px;margin:22px 0 6px">' + esc(f.nom || '') + '</h2>';
+    h += '<table cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:100%">';
+    lignes.forEach(function (l, i) {
+      h += '<tr>' + l.map(function (v) { return cell(v, f.entete && i === 0 ? 'th' : 'td'); }).join('') + '</tr>';
+    });
+    h += '</table>';
+  });
+  h += '<p style="font-size:12px;color:#6B6B60;margin-top:24px">Récapitulatif généré par l\'app du séjour' + (url ? ' : ' + esc(url) : '') +
+    '<br>La sauvegarde complète des données est en pièce jointe (fichier .json). Elle se réimporte dans l\'app via l\'onglet Réglages.</p>';
+  h += '</div>';
+  return h;
+}
+
+/** Archive l'état courant dans un onglet du classeur de données (les 15
+ *  dernières archives sont conservées). Ne bloque jamais l'opération suivante. */
+function archiverDonnees_(motif) {
+  try {
+    var cell = cellule_();
+    var v = cell.getValue();
+    if (!v) return;
+    var ss = cell.getSheet().getParent();
+    var nom = ('archive ' + Utilities.formatDate(new Date(), 'Europe/Paris', 'dd-MM-yyyy HH:mm:ss') +
+      ' ' + (motif || '')).trim().slice(0, 90);
+    if (ss.getSheetByName(nom)) nom = (nom + ' ' + Math.random().toString(36).slice(2, 5)).slice(0, 95);
+    ss.insertSheet(nom).getRange(1, 1).setValue(v);
+    var arch = ss.getSheets().filter(function (s) { return s.getName().indexOf('archive ') === 0; });
+    while (arch.length > 15) {
+      try { ss.deleteSheet(arch.shift()); } catch (e) { break; }
+    }
+  } catch (e) {}
+}
+
+/** Remplace toutes les données par une sauvegarde JSON collée dans l'app.
+ *  L'état précédent est archivé avant l'écrasement. */
+function importerDonnees(json) {
+  var d;
+  try {
+    d = JSON.parse(String(json || ''));
+    if (!d || typeof d !== 'object' || !Array.isArray(d.participants) ||
+        !Array.isArray(d.expenses) || typeof d.meals !== 'object') throw new Error('forme');
+  } catch (e) {
+    return JSON.stringify({ ok: false, err: 'forme' });
+  }
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    archiverDonnees_('avant import');
+    d.config = (d.config && typeof d.config === 'object') ? d.config
+      : { titre: 'Séjour importé', sousTitre: '', debut: '', fin: '', prorata: 0 };
+    d.foyers = Array.isArray(d.foyers) ? d.foyers : [];
+    d.batiments = Array.isArray(d.batiments) ? d.batiments : [];
+    d.chambres = d.chambres || {};
+    d.wifi = d.wifi || {};
+    d.liste = Array.isArray(d.liste) ? d.liste : [];
+    d.version = 5;
+    writeData_(d);
+  } finally {
+    lock.releaseLock();
+  }
+  try { notifier_('Données remplacées par une sauvegarde importée', 'reglages', nomInstance_()); } catch (e) {}
+  return JSON.stringify({ ok: true, data: d });
+}
+
+/** Nouveau séjour : archive l'état courant puis repart d'un séjour vierge
+ *  (titre et dates à régler dans Réglages). */
+function reinitialiserSejour() {
+  var vierge = donneesInitiales_();
+  vierge.config.titre = 'Nouveau séjour';
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    archiverDonnees_('avant remise à zéro');
+    writeData_(vierge);
+  } finally {
+    lock.releaseLock();
+  }
+  try { notifier_('Séjour remis à zéro (l\'ancien état reste archivé dans le classeur de données)', 'reglages', 'Séjour'); } catch (e) {}
+  return JSON.stringify({ ok: true, data: vierge });
 }
 
 /* ------------------------- Alertes mail ------------------------------- */
@@ -468,6 +683,14 @@ function nomPar_(d, id) {
   return null;
 }
 
+/** Texte « réparti par personne » d'une dépense, à partir des pids cochés. */
+function quiTexte_(d, qui) {
+  if (!Array.isArray(qui) || !qui.length) return '';
+  var noms = qui.map(function (id) { return nomPar_(d, id); }).filter(Boolean);
+  if (!noms.length) return ', par personne (' + qui.length + ')';
+  return ', par personne : ' + (noms.length > 6 ? noms.length + ' personnes' : noms.join(', '));
+}
+
 function nomBat_(d, id) {
   for (var i = 0; i < d.batiments.length; i++) {
     if (d.batiments[i].id === id) return d.batiments[i].nom;
@@ -495,6 +718,11 @@ function decrireOp_(d, op) {
         var abs = (op.patch.absents || []).map(function (id) { return nomPar_(d, id); }).filter(Boolean);
         return 'Absents du ' + slotLbl_(op.slot) + ' : ' + (abs.length ? abs.join(', ') : 'plus personne');
       }
+      if (op.patch && op.patch.hasOwnProperty('inv')) {
+        var invD = op.patch.inv || {};
+        var invTxt = Object.keys(invD).map(function (f) { return f + ' +' + invD[f]; }).join(', ');
+        return 'Invités du ' + slotLbl_(op.slot) + ' : ' + (invTxt || 'plus aucun');
+      }
       if (op.patch && op.patch.hasOwnProperty('menu')) {
         var menu = String(op.patch.menu || '').slice(0, 80);
         return 'Menu du ' + slotLbl_(op.slot) + ' : ' + (menu || '(effacé)');
@@ -511,6 +739,7 @@ function decrireOp_(d, op) {
       return 'Dépense ajoutée : ' + String(op.exp && op.exp.label || '').slice(0, 80) +
         ', ' + (parseFloat(op.exp && op.exp.amount) || 0) + ' € (' + String(op.exp && op.exp.payer || '?') + ')' +
         (op.exp && Array.isArray(op.exp.pour) && op.exp.pour.length ? ', pour ' + op.exp.pour.join(' + ') : '') +
+        quiTexte_(d, op.exp && op.exp.qui) +
         (op.exp && op.exp.pj ? ', avec facture' : '');
     case 'delExpense': {
       var e = null;
@@ -524,6 +753,7 @@ function decrireOp_(d, op) {
                     activites: 'activités', autre: 'autre' })[op.link] || String(op.link || '');
       return 'Dépense modifiée : ' + (e2 ? e2.label : op.id) + ' → ' + cat2 +
         (Array.isArray(op.pour) && op.pour.length ? ', pour ' + op.pour.join(' + ') : '') +
+        quiTexte_(d, op.qui) +
         (op.payer ? ', payée par ' + String(op.payer).slice(0, 40) : '');
     }
     case 'addParticipant':
